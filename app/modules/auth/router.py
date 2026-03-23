@@ -22,7 +22,6 @@ from app.modules.auth.schemas import (
     VerifyOtpRequest,
 )
 from app.modules.auth.service import auth_service
-from app.modules.audit.service import audit_service
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
@@ -37,19 +36,6 @@ async def register(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     user = await auth_service.register(db, payload, skip_otp=False)
-    
-    # Audit trail (success)
-    await audit_service.log(
-        db=db,
-        user_id=user.id,
-        username=user.username,
-        action="USER_REGISTER",
-        module="AUTH",
-        payload=payload.model_dump(),
-        description="Public registration.",
-        request=request,
-        status_code=status.HTTP_200_OK
-    )
     
     return ApiResponse.success(
         message="Registration successful.",
@@ -79,35 +65,7 @@ async def login_password(
     payload: PasswordLoginRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    try:
-        result = await auth_service.login_password(db, payload)
-        
-        status_code = status.HTTP_202_ACCEPTED if isinstance(result, MfaPendingResponse) else status.HTTP_200_OK
-        
-        # Log success
-        await audit_service.log(
-            db=db,
-            username=payload.email,
-            action="LOGIN_PASSWORD",
-            module="AUTH",
-            description="Login via password.",
-            request=request,
-            status_code=status_code,
-            response_body=result if status_code == 202 else None  # Save MFA info for debug
-        )
-    except HTTPException as e:
-        # Log failed login attempt
-        await audit_service.log(
-            db=db,
-            username=payload.email,
-            action="LOGIN_PASSWORD_FAILED",
-            module="AUTH",
-            description=f"Error: {e.detail}",
-            request=request,
-            status_code=e.status_code,
-            response_body={"detail": e.detail}
-        )
-        raise e
+    result = await auth_service.login_password(db, payload)
 
     if isinstance(result, MfaPendingResponse):
         # 202 Accepted — MFA required
@@ -232,15 +190,6 @@ async def reset_password(
     db: AsyncSession = Depends(get_db),
 ):
     await auth_service.reset_password(db, payload)
-    
-    await audit_service.log(
-        db=db,
-        username=payload.email,
-        action="RESET_PASSWORD",
-        module="AUTH",
-        description="Password reset via OTP completed.",
-        payload=payload.model_dump()
-    )
     
     return ApiResponse.success(message="Password reset successful.")
 

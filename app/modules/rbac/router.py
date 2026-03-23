@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.common import ApiResponse
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_permission
-from app.modules.audit.service import audit_service
 from app.modules.rbac.schemas import (
     AccessControlResponse,
     ModuleResponse,
@@ -29,19 +28,8 @@ router = APIRouter(
 @router.get("/roles", response_model=ApiResponse)
 async def list_roles(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[Any, Depends(get_current_user)],
 ):
     roles = await rbac_service.get_all_roles(db)
-
-    await audit_service.log(
-        db=db,
-        user_id=admin.id,
-        username=admin.username,
-        action="LIST_ROLES",
-        module="RBAC",
-        response_body=roles,
-        status_code=status.HTTP_200_OK
-    )
 
     return ApiResponse.success(
         data=[RoleResponse.model_validate(r).model_dump() for r in roles]
@@ -56,38 +44,12 @@ async def list_roles(
 async def create_role(
     payload: RoleCreateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[Any, Depends(get_current_user)],  # Any for simplicity
 ):
-    try:
-        role = await rbac_service.create_role(db, payload)
+    role = await rbac_service.create_role(db, payload)
 
-        await audit_service.log(
-            db=db,
-            user_id=admin.id,
-            username=admin.username,
-            action="CREATE_ROLE",
-            module="RBAC",
-            description=f"Created role: {role.name}",
-            payload=payload.model_dump(),
-            status_code=status.HTTP_201_CREATED,
-            response_body=role  # AuditService will summarize or log as needed
-        )
-
-        return ApiResponse.success(
-            message="Role created.", data=RoleResponse.model_validate(role).model_dump()
-        )
-    except Exception as e:
-        await audit_service.log(
-            db=db,
-            user_id=admin.id,
-            username=admin.username,
-            action="CREATE_ROLE_FAILED",
-            module="RBAC",
-            description=f"Error: {str(e)}",
-            payload=payload.model_dump(),
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-        raise e
+    return ApiResponse.success(
+        message="Role created.", data=RoleResponse.model_validate(role).model_dump()
+    )
 
 
 @router.delete(
@@ -96,22 +58,13 @@ async def create_role(
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "DELETE"))],
 )
 async def delete_role(
-    uuid: str, db: AsyncSession = Depends(get_db), admin=Depends(get_current_user)
+    uuid: str, db: AsyncSession = Depends(get_db)
 ):
     deleted = await rbac_service.delete_role(db, uuid)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Role not found."
         )
-
-    await audit_service.log(
-        db=db,
-        user_id=admin.id,
-        username=admin.username,
-        action="DELETE_ROLE",
-        module="RBAC",
-        description=f"Deleted role ID: {uuid}"
-    )
 
     return ApiResponse.success(message="Role deleted.")
 
@@ -121,19 +74,8 @@ async def delete_role(
 @router.get("/modules", response_model=ApiResponse)
 async def list_modules(
     db: AsyncSession = Depends(get_db),
-    admin: Any = Depends(get_current_user),
 ):
     modules = await rbac_service.get_all_modules(db)
-
-    await audit_service.log(
-        db=db,
-        user_id=admin.id,
-        username=admin.username,
-        action="LIST_MODULES",
-        module="RBAC",
-        response_body=modules,
-        status_code=status.HTTP_200_OK
-    )
 
     return ApiResponse.success(
         data=[ModuleResponse.model_validate(m).model_dump() for m in modules]
@@ -160,19 +102,8 @@ async def upsert_role_module(
     module_uuid: str,
     payload: PermissionToggleRequest,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(get_current_user),
 ):
     mapping = await rbac_service.upsert_role_module(db, role_uuid, module_uuid, payload)
-
-    await audit_service.log(
-        db=db,
-        user_id=admin.id,
-        username=admin.username,
-        action="UPDATE_ROLE_PERMISSIONS",
-        module="RBAC",
-        description=f"Updated permissions for Role {role_uuid} on Module {module_uuid}",
-        payload=payload.model_dump()
-    )
 
     return ApiResponse.success(
         message="Role-module permissions updated.",

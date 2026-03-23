@@ -39,7 +39,7 @@ class AuthService:
         db: AsyncSession,
         payload: RegisterRequest,
         skip_otp: bool = False,
-        assigned_role_id: Optional[str] = None,
+        assigned_role_name: Optional[str] = None,
     ) -> UserLogin:
         """
         Public registration — validates email + mobile OTP before creating user.
@@ -97,7 +97,18 @@ class AuthService:
                     )
 
         # Determine role
-        role_id = assigned_role_id or payload.role_id
+        role_name_to_lookup = assigned_role_name or payload.role_name
+        role_id = None
+        
+        if role_name_to_lookup:
+            role_record = await rbac_service.get_role_by_name(db, role_name_to_lookup)
+            if not role_record:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Role '{role_name_to_lookup}' not found."
+                )
+            role_id = role_record.id
+
         if not role_id:
             # Auto-assign default ROLE_USER for public registration
             default_role = await rbac_service.get_role_by_name(

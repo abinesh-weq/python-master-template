@@ -14,7 +14,7 @@ class RegisterRequest(BaseModel):
     password: str
     email_otp: Optional[str] = None  # Required for /register (public)
     mobile_otp: Optional[str] = None  # Required for /register (public)
-    role_id: Optional[str] = None  # Used by /admin/register only
+    role_name: Optional[str] = None  # Used by /admin/register only
 
     @field_validator("password")
     @classmethod
@@ -27,9 +27,13 @@ class RegisterRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_at_least_one_contact(self):
+    def validate_contacts_and_otps(self):
         if not self.email and not self.phone_number:
             raise ValueError("Either email or phone_number must be provided.")
+        if self.email and not self.email_otp:
+            raise ValueError("email_otp is required when email is provided.")
+        if self.phone_number and not self.mobile_otp:
+            raise ValueError("mobile_otp is required when phone_number is provided.")
         return self
 
 
