@@ -143,6 +143,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 # Metadata extraction
                 url_path: str = str(request.url.path)
                 path_parts: list[str] = url_path.strip("/").split("/")
+                # Path format: /api/v1/module/endpoint -> ['', 'api', 'v1', 'auth', 'login']
+                # url_path.strip("/") -> 'api/v1/auth/login' -> ['api', 'v1', 'auth', 'login']
                 module = path_parts[2].upper() if len(path_parts) > 2 else "CORE"
                 action_name = f"{request.method} {url_path}"
 
