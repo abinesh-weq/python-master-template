@@ -4,6 +4,7 @@ import traceback
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import exc as sqlalchemy_exc
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,46 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "status": "ERROR",
                 "errorCode": "422",
                 "message": "; ".join(messages),
+                "data": None,
+            },
+        )
+
+    # ── SQLAlchemy/DB Errors ────────────────────────────────────────────────
+    @app.exception_handler(sqlalchemy_exc.IntegrityError)
+    async def sqlalchemy_integrity_handler(request: Request, exc: sqlalchemy_exc.IntegrityError):
+        logger.warning("Integrity error: %s %s -> %s", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "status": "ERROR",
+                "errorCode": "409",
+                "message": "Database integrity error.",
+                "data": None,
+            },
+        )
+
+    @app.exception_handler(sqlalchemy_exc.DataError)
+    async def sqlalchemy_data_handler(request: Request, exc: sqlalchemy_exc.DataError):
+        logger.warning("Data error: %s %s -> %s", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "status": "ERROR",
+                "errorCode": "400",
+                "message": "Invalid data format for database operation.",
+                "data": None,
+            },
+        )
+
+    @app.exception_handler(sqlalchemy_exc.OperationalError)
+    async def sqlalchemy_operational_handler(request: Request, exc: sqlalchemy_exc.OperationalError):
+        logger.error("Database operational error: %s %s -> %s", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "ERROR",
+                "errorCode": "503",
+                "message": "Database service unavailable.",
                 "data": None,
             },
         )

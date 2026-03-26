@@ -6,8 +6,8 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-# ── Argon2 Context ────────────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# ── BCrypt Context (Industry Standard) ──────────────────────────────────────
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(plain_password: str) -> str:

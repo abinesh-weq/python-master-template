@@ -2,6 +2,7 @@ import json
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -10,6 +11,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     AUDIT_LOG_ENABLED: bool = True
+    AUTH_ENABLED: bool = True  # Set to False for local dev (bypasses JWT and RBAC)
 
     # ── Database (MySQL) ──────────────────────────────────────────────────────
     DB_HOST: str = "localhost"
@@ -19,11 +21,20 @@ class Settings(BaseSettings):
     DB_NAME: str = "weq_db"
 
     # ── Security (JWT & Password) ─────────────────────────────────────────────
-    JWT_SECRET_KEY: str = "change-me-to-a-very-long-random-secret-key"
+    JWT_SECRET_KEY: str  # Required - no default for security
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     PASSWORD_REGEX: str = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$"
+    USERNAME_REGEX: str = r"^[A-Za-z0-9_.-]{3,30}$"
+    PHONE_NUMBER_REGEX: str = r"^[0-9]{7,15}$"
+
+    @field_validator("JWT_SECRET_KEY")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters long for security")
+        return v
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Stored as a plain str — pydantic-settings NEVER auto-JSON-parses str
@@ -49,8 +60,8 @@ class Settings(BaseSettings):
     OTP_EXPIRE_MINUTES: int = 5
 
     # ── Default Roles ─────────────────────────────────────────────────────────
-    DEFAULT_USER_ROLE: str = "ROLE_USER"
-    DEFAULT_ADMIN_ROLE: str = "ROLE_ADMIN"
+    DEFAULT_USER_ROLE: str = "user"
+    DEFAULT_ADMIN_ROLE: str = "admin"
 
     # ── Computed DB URLs ──────────────────────────────────────────────────────
     @property

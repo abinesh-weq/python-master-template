@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, String, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, generate_uuid
@@ -13,7 +13,8 @@ class RoleMaster(Base):
 
     __tablename__ = "role_master"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
 
     # Login method gates
@@ -34,7 +35,8 @@ class ModuleMaster(Base):
 
     __tablename__ = "module_master"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     module_code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -49,12 +51,13 @@ class RoleModuleMapping(Base):
 
     __tablename__ = "role_module_mapping"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    role_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("role_master.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
+    role_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("role_master.uuid", ondelete="CASCADE"), nullable=False
     )
-    module_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("module_master.id", ondelete="CASCADE"), nullable=False
+    module_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("module_master.uuid", ondelete="CASCADE"), nullable=False
     )
 
     can_read: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -73,12 +76,13 @@ class AccessControlMaster(Base):
 
     __tablename__ = "access_control_master"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("user_login.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
+    user_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("user_login.uuid", ondelete="CASCADE"), nullable=False
     )
-    module_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("module_master.id", ondelete="CASCADE"), nullable=False
+    module_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("module_master.uuid", ondelete="CASCADE"), nullable=False
     )
 
     can_read: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -97,9 +101,10 @@ class RefreshToken(Base):
 
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("user_login.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
+    user_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("user_login.uuid", ondelete="CASCADE"), nullable=False
     )
     token: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

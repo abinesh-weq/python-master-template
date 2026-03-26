@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.modules.rbac.service import rbac_service
@@ -15,13 +16,19 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 # ── Current User Extraction ───────────────────────────────────────────────────
 
+
 async def get_current_user_email(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ) -> str:
     """
     Extracts user email (sub claim) from Bearer JWT.
-    Raises 401 if token is missing or invalid.
+    If AUTH_ENABLED is False, returns a dev user email (bypasses JWT validation).
+    Raises 401 if token is missing or invalid (when AUTH_ENABLED is True).
     """
+    # ── Dev Mode: Bypass JWT validation ────────────────────────────────────
+    if not settings.AUTH_ENABLED:
+        return "dev-user@localhost"
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -48,7 +55,31 @@ async def get_current_user(
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db),
 ):
-    """Loads the full UserLogin record for the authenticated user."""
+    """
+    Loads the full UserLogin record for the authenticated user.
+    If AUTH_ENABLED is False (dev mode), returns a mock admin user.
+    """
+    # ── Dev Mode: Return mock admin user ──────────────────────────────────────
+    if not settings.AUTH_ENABLED:
+        # Create a mock user object with necessary attributes for dev mode
+        class MockUser:
+            def __init__(self):
+                self.id = 0
+                self.uuid = "dev-user-uuid"
+                self.email = "dev-user@localhost"
+                self.username = "dev-user"
+                self.name = "Dev User"
+                self.is_active = True
+                self.is_verified = True
+                self.is_mfa_enabled = False
+                self.is_biometric_enabled = False
+                self.role_uuid = "dev-admin-role-uuid"  # Full access in dev mode
+                self.provider = "LOCAL"
+                self.password = None
+                self.device_id = None
+        
+        return MockUser()
+    
     user = await user_service.get_by_email(db, email)
     if not user or not user.is_active:
         raise HTTPException(
@@ -60,9 +91,11 @@ async def get_current_user(
 
 # ── RBAC Permission Matrix ────────────────────────────────────────────────────
 
+
 def require_permission(module_code: str, action: str) -> Callable:
     """
     Factory that returns a FastAPI Depends callable enforcing RBAC.
+    If AUTH_ENABLED is False, authorizes all requests (dev mode).
 
     Algorithm (mirrors Java RBAC interceptor):
     1. Parse JWT → extract user_id
@@ -79,6 +112,9 @@ def require_permission(module_code: str, action: str) -> Callable:
         current_user=Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        # ── Dev Mode: Bypass RBAC ─────────────────────────────────────────
+        if not settings.AUTH_ENABLED:
+            return current_user
         # ── Step 2: Resolve module ─────────────────────────────────────────
         module = await rbac_service.get_module_by_code(db, module_code)
         if not module:
@@ -88,7 +124,9 @@ def require_permission(module_code: str, action: str) -> Callable:
             )
 
         # ── Step 3: Check per-user override (access_control_master) ───────
-        user_override = await rbac_service.get_user_access(db, current_user.id, module.id)
+        user_override = await rbac_service.get_user_access_by_uuids(
+            db, current_user.uuid, module.uuid
+        )
         if user_override:
             granted = _evaluate_action(user_override, action)
             if not granted:
@@ -99,15 +137,17 @@ def require_permission(module_code: str, action: str) -> Callable:
             return current_user  # Override grants access — stop here
 
         # ── Step 4: Fall back to role_module_mapping ───────────────────────
-        if not current_user.role_id:
+        if not current_user.role_uuid:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User has no role assigned.",
             )
 
-        role_mappings = await rbac_service.get_role_modules(db, current_user.role_id)
+        role_mappings = await rbac_service.get_role_modules_by_uuid(
+            db, current_user.role_uuid
+        )
         role_mapping = next(
-            (m for m in role_mappings if m.module_id == module.id), None
+            (m for m in role_mappings if m.module_uuid == module.uuid), None
         )
 
         if not role_mapping or not _evaluate_action(role_mapping, action):

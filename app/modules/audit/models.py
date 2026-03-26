@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import JSON, String, Text
+from sqlalchemy import JSON, String, Text, Integer
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, generate_uuid
@@ -14,15 +15,18 @@ class AuditLog(Base):
 
     __tablename__ = "audit_logs"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     
     # Who did it
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    user_uuid: Mapped[Optional[str]] = mapped_column(
+        String(36), sa.ForeignKey("user_login.uuid", ondelete="SET NULL"), nullable=True
+    )
     username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # What did they do
     action: Mapped[str] = mapped_column(String(100), nullable=False)  # Example: LOGIN, CREATE_USER
-    module: Mapped[str] = mapped_column(String(50), nullable=False)   # Example: AUTH, RBAC
+    module: Mapped[str] = mapped_column(String(100), nullable=False)   # Example: AUTH, RBAC
     
     # Request metadata
     method: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)

@@ -8,7 +8,7 @@ class PredefinedMasterCreateRequest(BaseModel):
     code: str
     name: str
     description: Optional[str] = None
-    parent_id: Optional[str] = None
+    parent_uuid: Optional[str] = None
     sort_order: Optional[int] = 0
     is_active: bool = True
 
@@ -18,18 +18,19 @@ class PredefinedMasterUpdateRequest(BaseModel):
     code: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
-    parent_id: Optional[str] = None
+    parent_uuid: Optional[str] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
 
 
 class PredefinedMasterResponse(BaseModel):
-    id: str
+    id: int
+    uuid: str
     entity_type: str
     code: str
     name: str
     description: Optional[str] = None
-    parent_id: Optional[str] = None
+    parent_uuid: Optional[str] = None
     sort_order: Optional[int] = None
     is_active: bool
 

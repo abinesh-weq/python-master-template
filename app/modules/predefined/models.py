@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,7 +15,8 @@ class PredefinedMaster(Base):
 
     __tablename__ = "predefined_master"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
 
     # Classification — e.g., "COUNTRY", "STATE", "CITY", "CATEGORY"
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
@@ -29,9 +31,9 @@ class PredefinedMaster(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
 
     # Self-referential FK — NULL means root node
-    parent_id: Mapped[str] = mapped_column(
+    parent_uuid: Mapped[Optional[str]] = mapped_column(
         String(36),
-        ForeignKey("predefined_master.id", ondelete="RESTRICT"),
+        ForeignKey("predefined_master.uuid", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )

@@ -1,21 +1,25 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
-from app.core.middlewares import AuditMiddleware, LoggingMiddleware, limiter
+from app.core.middlewares import AuditMiddleware, LoggingMiddleware, RequestIdMiddleware, limiter
 
 # ── Module Routers ────────────────────────────────────────────────────────────
 from app.modules.auth.router import router as auth_router
 from app.modules.users.router import router as users_router
 from app.modules.rbac.router import router as rbac_router
 from app.modules.predefined.router import router as predefined_router
+from app.modules.integration.router import router as integration_router
 
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -42,6 +46,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── Logging & Audit Middlewares (mirrors Java Interceptors) ───────────────────
+app.add_middleware(RequestIdMiddleware)  # Must be first to set request ID
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(AuditMiddleware)
 
@@ -69,14 +74,99 @@ async def on_startup():
     logging.getLogger(__name__).info("✅ In-memory cache initialized.")
 
 
+# ── Shutdown — Graceful Cleanup ───────────────────────────────────────────────
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Graceful shutdown: close database connections and clear cache.
+    Ensures clean termination of resources.
+    """
+    from app.core.database import engine
+    
+    # Close database connections
+    await engine.dispose()
+    logging.getLogger(__name__).info("✅ Database connections closed.")
+    
+    # Clear cache
+    try:
+        from fastapi_cache import FastAPICache
+        await FastAPICache.clear()
+        logging.getLogger(__name__).info("✅ Cache cleared.")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"⚠️ Cache cleanup failed: {e}")
+
+
 # ── Route Registration ────────────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(rbac_router)
 app.include_router(predefined_router)
+app.include_router(integration_router)
 
 
-# ── Health Check ──────────────────────────────────────────────────────────────
+# ── Health & Cache APIs ───────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
-async def health_check():
-    return {"status": "UP", "app": settings.APP_NAME, "version": settings.APP_VERSION}
+async def health_check(db: AsyncSession = Depends(get_db)):
+    """Check DB and cache status."""
+    from app.core.config import settings
+    
+    # Check database connectivity
+    db_status = "UP"
+    db_error = None
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = "DOWN"
+        db_error = str(e)
+    
+    # Check cache connectivity
+    cache_status = "UP"
+    cache_error = None
+    try:
+        from fastapi_cache import FastAPICache
+        from fastapi_cache.backends.inmemory import InMemoryBackend
+
+        # Ensure FastAPICache is initialized
+        try:
+            backend = FastAPICache.get_backend()
+        except AssertionError:
+            FastAPICache.init(InMemoryBackend(), prefix="weq-cache")
+            backend = FastAPICache.get_backend()
+
+        # health probe via key roundtrip
+        await backend.set("health_check", b"1", expire=5)
+        found = await backend.get("health_check")
+        if found is None:
+            raise RuntimeError("Cache probe key unavailable")
+    except Exception as e:
+        cache_status = "DOWN"
+        cache_error = str(e)
+    
+    # Overall status
+    overall_status = "UP" if db_status == "UP" and cache_status == "UP" else "DOWN"
+    
+    return {
+        "status": overall_status,
+        "timestamp": settings.APP_VERSION and settings.APP_VERSION,
+        "version": settings.APP_VERSION,
+        "components": {
+            "database": {
+                "status": db_status,
+                "details": {"error": db_error} if db_error else {}
+            },
+            "cache": {
+                "status": cache_status,
+                "details": {"error": cache_error} if cache_error else {}
+            }
+        }
+    }
+
+
+@app.post("/api/v1/admin/cache/clear", tags=["Admin - Cache"])
+async def clear_cache():
+    """Clear application cache (admin usage)."""
+    try:
+        await FastAPICache.clear()
+        return {"status": "SUCCESS", "message": "Cache cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cache clear failed: {e}")

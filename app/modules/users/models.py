@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import Boolean, String, DateTime
+from sqlalchemy import Boolean, String, DateTime, Integer
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, generate_uuid
@@ -14,9 +15,8 @@ class UserLogin(Base):
 
     __tablename__ = "user_login"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=generate_uuid
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     username: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -40,7 +40,9 @@ class UserLogin(Base):
     device_id: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # Role FK (single role per user — see rbac/models.py)
-    role_id: Mapped[str] = mapped_column(String(36), nullable=True)
+    role_uuid: Mapped[Optional[str]] = mapped_column(
+        String(36), sa.ForeignKey("role_master.uuid", ondelete="SET NULL"), nullable=True
+    )
 
     # Standard Timestamps
     created_at: Mapped[datetime] = mapped_column(

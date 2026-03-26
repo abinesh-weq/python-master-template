@@ -10,7 +10,8 @@ class CommunicationProviderConfig(Base):
 
     __tablename__ = "communication_provider_config"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     provider_name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "TWILIO", "SENDGRID"
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)   # SMS | EMAIL | PUSH
     priority: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -23,9 +24,10 @@ class ProviderApiMetadata(Base):
 
     __tablename__ = "provider_api_metadata"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    provider_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("communication_provider_config.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
+    provider_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("communication_provider_config.uuid", ondelete="CASCADE"), nullable=False
     )
     base_url: Mapped[str] = mapped_column(String(500), nullable=False)
     api_key: Mapped[str] = mapped_column(String(500), nullable=True)
@@ -44,9 +46,10 @@ class ProviderApiMapping(Base):
 
     __tablename__ = "provider_api_mapping"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    provider_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("communication_provider_config.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
+    provider_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("communication_provider_config.uuid", ondelete="CASCADE"), nullable=False
     )
     action_code: Mapped[str] = mapped_column(String(100), nullable=False)  # OTP_SMS, OTP_EMAIL, etc.
     endpoint_path: Mapped[str] = mapped_column(String(500), nullable=False)  # appended to base_url
@@ -61,7 +64,8 @@ class NotificationTemplateMaster(Base):
 
     __tablename__ = "notification_template_master"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)  # OTP_EMAIL, OTP_SMS
     subject: Mapped[str] = mapped_column(String(500), nullable=True)
     # Full HTML or plain-text body with {{VARIABLE}} placeholders
@@ -76,7 +80,8 @@ class NotificationLog(Base):
 
     __tablename__ = "notification_log"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     recipient: Mapped[str] = mapped_column(String(200), nullable=False)  # email or phone
     channel: Mapped[str] = mapped_column(String(20), nullable=False)
     template_code: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -92,9 +97,10 @@ class NotificationPayloadLog(Base):
 
     __tablename__ = "notification_payload_log"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    notification_log_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("notification_log.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
+    notification_log_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("notification_log.uuid", ondelete="CASCADE"), nullable=False
     )
     request_payload: Mapped[str] = mapped_column(Text, nullable=True)
     response_payload: Mapped[str] = mapped_column(Text, nullable=True)

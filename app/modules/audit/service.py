@@ -13,7 +13,7 @@ class AuditService:
         db: AsyncSession,
         action: str,
         module: str,
-        user_id: Optional[str] = None,
+        user_uuid: Optional[str] = None,
         username: Optional[str] = None,
         description: Optional[str] = None,
         payload: Optional[dict] = None,
@@ -100,7 +100,7 @@ class AuditService:
                 stored_response = self._summarize_lists(stored_response)
 
         log_entry = AuditLog(
-            user_id=user_id,
+            user_uuid=user_uuid,
             username=username,
             action=action,
             module=module,

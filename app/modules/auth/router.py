@@ -1,12 +1,13 @@
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.common import ApiResponse
+from app.core.common import ApiResponse, ApiRouter
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_permission
 from app.core.middlewares import limiter
+from app.modules.auth.params import API_PREFIX
 from app.modules.auth.schemas import (
     ForgotPasswordRequest,
     MfaLoginRequest,
@@ -15,20 +16,23 @@ from app.modules.auth.schemas import (
     PasswordLoginRequest,
     RefreshTokenRequest,
     RegisterRequest,
+    AdminRegisterRequest,
     ResetPasswordRequest,
+    ChangePasswordRequest,
     SendOtpRequest,
     SocialLoginRequest,
     TokenResponse,
     VerifyOtpRequest,
+    RegisterResponse,
 )
 from app.modules.auth.service import auth_service
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+router = ApiRouter(prefix=API_PREFIX, tags=["Authentication"])
 
 
 # ── Public Registration (OTP required) ───────────────────────────────────────
-@router.post("/register", response_model=ApiResponse)
+@router.post("/register", response_model=ApiResponse[RegisterResponse])
 @limiter.limit("5/minute")
 async def register(
     request: Request,
@@ -44,9 +48,9 @@ async def register(
 
 
 # ── Admin Registration (OTP skipped, JWT secured) ────────────────────────────
-@router.post("/admin/register", response_model=ApiResponse)
+@router.post("/admin/register", response_model=ApiResponse[RegisterResponse])
 async def admin_register(
-    payload: RegisterRequest,
+    payload: AdminRegisterRequest,
     db: AsyncSession = Depends(get_db),
     _=Depends(require_permission("USER_MANAGEMENT", "WRITE")),
 ):
@@ -58,7 +62,7 @@ async def admin_register(
 
 
 # ── Password Login ────────────────────────────────────────────────────────────
-@router.post("/login/password", response_model=ApiResponse)
+@router.post("/login/password", response_model=ApiResponse[Union[TokenResponse, MfaPendingResponse]])
 @limiter.limit("5/minute")
 async def login_password(
     request: Request,
@@ -81,7 +85,7 @@ async def login_password(
 
 
 # ── MFA Login ─────────────────────────────────────────────────────────────────
-@router.post("/login/mfa", response_model=ApiResponse)
+@router.post("/login/mfa", response_model=ApiResponse[TokenResponse])
 async def login_mfa(
     payload: MfaLoginRequest,
     db: AsyncSession = Depends(get_db),
@@ -94,28 +98,22 @@ async def login_mfa(
     )
 
 
-# ── Email OTP Login ───────────────────────────────────────────────────────────
-@router.post("/login/email-otp", response_model=ApiResponse)
-async def login_email_otp(
+# ── OTP Login (unified — email or phone auto-detected) ───────────────────────
+@router.post("/login/otp", response_model=ApiResponse[TokenResponse])
+@limiter.limit("5/minute")
+async def login_otp(
+    request: Request,
     payload: OtpLoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    tokens = await auth_service.login_email_otp(db, payload.identifier, payload.otp)
-    return ApiResponse.success(message="Login successful.", data=tokens.model_dump())
-
-
-# ── Mobile OTP Login ──────────────────────────────────────────────────────────
-@router.post("/login/mobile-otp", response_model=ApiResponse)
-async def login_mobile_otp(
-    payload: OtpLoginRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    tokens = await auth_service.login_mobile_otp(db, payload.identifier, payload.otp)
+    tokens = await auth_service.login_otp(
+        db, payload.identifier, payload.identifier_type, payload.otp
+    )
     return ApiResponse.success(message="Login successful.", data=tokens.model_dump())
 
 
 # ── Social Login ──────────────────────────────────────────────────────────────
-@router.post("/login/google", response_model=ApiResponse)
+@router.post("/login/google", response_model=ApiResponse[TokenResponse])
 async def login_google(payload: SocialLoginRequest, db: AsyncSession = Depends(get_db)):
     payload.provider = "GOOGLE"
     tokens = await auth_service.login_social(db, payload)
@@ -124,7 +122,7 @@ async def login_google(payload: SocialLoginRequest, db: AsyncSession = Depends(g
     )
 
 
-@router.post("/login/facebook", response_model=ApiResponse)
+@router.post("/login/facebook", response_model=ApiResponse[TokenResponse])
 async def login_facebook(
     payload: SocialLoginRequest, db: AsyncSession = Depends(get_db)
 ):
@@ -135,7 +133,7 @@ async def login_facebook(
     )
 
 
-@router.post("/login/apple", response_model=ApiResponse)
+@router.post("/login/apple", response_model=ApiResponse[TokenResponse])
 async def login_apple(payload: SocialLoginRequest, db: AsyncSession = Depends(get_db)):
     payload.provider = "APPLE"
     tokens = await auth_service.login_social(db, payload)
@@ -145,7 +143,7 @@ async def login_apple(payload: SocialLoginRequest, db: AsyncSession = Depends(ge
 
 
 # ── OTP Operations ────────────────────────────────────────────────────────────
-@router.post("/send-otp", response_model=ApiResponse)
+@router.post("/send-otp", response_model=ApiResponse[None])
 @limiter.limit("3/minute")
 async def send_otp(
     request: Request,
@@ -156,7 +154,7 @@ async def send_otp(
     return ApiResponse.success(message="OTP sent successfully.")
 
 
-@router.post("/verify-otp", response_model=ApiResponse)
+@router.post("/verify-otp", response_model=ApiResponse[None])
 async def verify_otp(
     payload: VerifyOtpRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -173,7 +171,7 @@ async def verify_otp(
 
 
 # ── Password Reset ────────────────────────────────────────────────────────────
-@router.post("/forgot-password", response_model=ApiResponse)
+@router.post("/forgot-password", response_model=ApiResponse[None])
 async def forgot_password(
     payload: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
@@ -184,7 +182,7 @@ async def forgot_password(
     )
 
 
-@router.post("/reset-password", response_model=ApiResponse)
+@router.post("/reset-password", response_model=ApiResponse[None])
 async def reset_password(
     payload: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
@@ -193,9 +191,19 @@ async def reset_password(
     
     return ApiResponse.success(message="Password reset successful.")
 
+# ── Password Change ────────────────────────────────────────────────────────────
+@router.post("/change-password", response_model=ApiResponse[None])
+async def change_password(
+    payload: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    await auth_service.change_password(db, current_user.uuid, payload)
+    return ApiResponse.success(message="Password changed successfully.")
+
 
 # ── Token Refresh ─────────────────────────────────────────────────────────────
-@router.post("/refresh-token", response_model=ApiResponse)
+@router.post("/refresh-token", response_model=ApiResponse[TokenResponse])
 async def refresh_token(
     payload: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
@@ -207,7 +215,7 @@ async def refresh_token(
 
 
 # ── Logout (Revoke Refresh Token) ─────────────────────────────────────────────
-@router.post("/logout", response_model=ApiResponse)
+@router.post("/logout", response_model=ApiResponse[None])
 async def logout(
     payload: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),

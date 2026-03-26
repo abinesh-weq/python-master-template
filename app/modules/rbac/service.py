@@ -24,10 +24,14 @@ class RbacService:
         return role
 
     async def get_all_roles(self, db: AsyncSession) -> list[RoleMaster]:
-        result = await db.execute(select(RoleMaster))
+        result = await db.execute(select(RoleMaster).where(RoleMaster.is_active.is_(True)).order_by(RoleMaster.id.desc()))
         return list(result.scalars().all())
 
-    async def get_role_by_id(self, db: AsyncSession, role_id: str) -> Optional[RoleMaster]:
+    async def get_role_by_uuid(self, db: AsyncSession, role_uuid: str) -> Optional[RoleMaster]:
+        result = await db.execute(select(RoleMaster).where(RoleMaster.uuid == role_uuid))
+        return result.scalar_one_or_none()
+
+    async def get_role_by_id(self, db: AsyncSession, role_id: int) -> Optional[RoleMaster]:
         result = await db.execute(select(RoleMaster).where(RoleMaster.id == role_id))
         return result.scalar_one_or_none()
 
@@ -35,17 +39,18 @@ class RbacService:
         result = await db.execute(select(RoleMaster).where(RoleMaster.name == name))
         return result.scalar_one_or_none()
 
-    async def delete_role(self, db: AsyncSession, role_id: str) -> bool:
-        role = await self.get_role_by_id(db, role_id)
+    async def delete_role(self, db: AsyncSession, role_uuid: str) -> bool:
+        role = await self.get_role_by_uuid(db, role_uuid)
         if not role:
             return False
-        await db.delete(role)
+        role.is_active = False
+        await db.flush()
         return True
 
     # ── Modules ───────────────────────────────────────────────────────────────
 
     async def get_all_modules(self, db: AsyncSession) -> list[ModuleMaster]:
-        result = await db.execute(select(ModuleMaster).where(ModuleMaster.is_active.is_(True)))
+        result = await db.execute(select(ModuleMaster).where(ModuleMaster.is_active.is_(True)).order_by(ModuleMaster.created_at.desc()))
         return list(result.scalars().all())
 
     async def get_module_by_code(self, db: AsyncSession, code: str) -> Optional[ModuleMaster]:
@@ -56,31 +61,41 @@ class RbacService:
 
     # ── Role-Module Mappings ───────────────────────────────────────────────────
 
-    async def get_role_modules(self, db: AsyncSession, role_id: str) -> list[RoleModuleMapping]:
+    async def get_role_modules(self, db: AsyncSession, role_uuid: str) -> list[RoleModuleMapping]:
         result = await db.execute(
-            select(RoleModuleMapping).where(RoleModuleMapping.role_id == role_id)
+            select(RoleModuleMapping).where(RoleModuleMapping.role_uuid == role_uuid).order_by(RoleModuleMapping.created_at.desc())
         )
         return list(result.scalars().all())
 
+    async def get_role_modules_by_uuid(self, db: AsyncSession, role_uuid: str) -> list[RoleModuleMapping]:
+        return await self.get_role_modules(db, role_uuid)
+
+    async def get_module_by_uuid(self, db: AsyncSession, module_uuid: str) -> Optional[ModuleMaster]:
+        result = await db.execute(select(ModuleMaster).where(ModuleMaster.uuid == module_uuid))
+        return result.scalar_one_or_none()
+
+    async def get_module_by_id(self, db: AsyncSession, module_id: int) -> Optional[ModuleMaster]:
+        result = await db.execute(select(ModuleMaster).where(ModuleMaster.id == module_id))
+        return result.scalar_one_or_none()
+
     async def upsert_role_module(
-        self, db: AsyncSession, role_id: str, module_id: str, payload: PermissionToggleRequest
+        self, db: AsyncSession, role_uuid: str, module_uuid: str, payload: PermissionToggleRequest
     ) -> RoleModuleMapping:
         """
         Upserts a role-module permission entry.
-        Mirrors Java RbacService.toggleRoleModulePermission().
         """
         result = await db.execute(
             select(RoleModuleMapping).where(
                 and_(
-                    RoleModuleMapping.role_id == role_id,
-                    RoleModuleMapping.module_id == module_id,
+                    RoleModuleMapping.role_uuid == role_uuid,
+                    RoleModuleMapping.module_uuid == module_uuid,
                 )
             )
         )
         mapping = result.scalar_one_or_none()
 
         if not mapping:
-            mapping = RoleModuleMapping(role_id=role_id, module_id=module_id)
+            mapping = RoleModuleMapping(role_uuid=role_uuid, module_uuid=module_uuid)
             db.add(mapping)
 
         update_data = payload.model_dump(exclude_none=True)
@@ -90,14 +105,19 @@ class RbacService:
         await db.flush()
         return mapping
 
+    async def upsert_role_module_by_uuids(
+        self, db: AsyncSession, role_uuid: str, module_uuid: str, payload: PermissionToggleRequest
+    ) -> RoleModuleMapping:
+        return await self.upsert_role_module(db, role_uuid, module_uuid, payload)
+
     async def delete_role_module(
-        self, db: AsyncSession, role_id: str, module_id: str
+        self, db: AsyncSession, role_uuid: str, module_uuid: str
     ) -> bool:
         result = await db.execute(
             select(RoleModuleMapping).where(
                 and_(
-                    RoleModuleMapping.role_id == role_id,
-                    RoleModuleMapping.module_id == module_id,
+                    RoleModuleMapping.role_uuid == role_uuid,
+                    RoleModuleMapping.module_uuid == module_uuid,
                 )
             )
         )
@@ -107,40 +127,55 @@ class RbacService:
         await db.delete(mapping)
         return True
 
+    async def delete_role_module_by_uuids(
+        self, db: AsyncSession, role_uuid: str, module_uuid: str
+    ) -> bool:
+        return await self.delete_role_module(db, role_uuid, module_uuid)
+
     # ── User Access Control Overrides ─────────────────────────────────────────
 
     async def get_user_access(
-        self, db: AsyncSession, user_id: str, module_id: str
+        self, db: AsyncSession, user_uuid: str, module_uuid: str
     ) -> Optional[AccessControlMaster]:
         result = await db.execute(
             select(AccessControlMaster).where(
                 and_(
-                    AccessControlMaster.user_id == user_id,
-                    AccessControlMaster.module_id == module_id,
+                    AccessControlMaster.user_uuid == user_uuid,
+                    AccessControlMaster.module_uuid == module_uuid,
                 )
             )
         )
         return result.scalar_one_or_none()
 
+    async def get_user_access_by_uuids(
+        self, db: AsyncSession, user_uuid: str, module_uuid: str
+    ) -> Optional[AccessControlMaster]:
+        return await self.get_user_access(db, user_uuid, module_uuid)
+
     async def get_all_user_access(
-        self, db: AsyncSession, user_id: str
+        self, db: AsyncSession, user_uuid: str
     ) -> list[AccessControlMaster]:
         result = await db.execute(
-            select(AccessControlMaster).where(AccessControlMaster.user_id == user_id)
+            select(AccessControlMaster).where(AccessControlMaster.user_uuid == user_uuid).order_by(AccessControlMaster.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def get_all_user_access_by_uuid(
+        self, db: AsyncSession, user_uuid: str
+    ) -> list[AccessControlMaster]:
+        return await self.get_all_user_access(db, user_uuid)
 
     async def upsert_user_access(
         self,
         db: AsyncSession,
-        user_id: str,
-        module_id: str,
+        user_uuid: str,
+        module_uuid: str,
         payload: PermissionToggleRequest,
     ) -> AccessControlMaster:
-        record = await self.get_user_access(db, user_id, module_id)
+        record = await self.get_user_access(db, user_uuid, module_uuid)
 
         if not record:
-            record = AccessControlMaster(user_id=user_id, module_id=module_id)
+            record = AccessControlMaster(user_uuid=user_uuid, module_uuid=module_uuid)
             db.add(record)
 
         update_data = payload.model_dump(exclude_none=True)
@@ -150,21 +185,35 @@ class RbacService:
         await db.flush()
         return record
 
+    async def upsert_user_access_by_uuids(
+        self,
+        db: AsyncSession,
+        user_uuid: str,
+        module_uuid: str,
+        payload: PermissionToggleRequest,
+    ) -> AccessControlMaster:
+        return await self.upsert_user_access(db, user_uuid, module_uuid, payload)
+
     async def delete_user_access(
-        self, db: AsyncSession, user_id: str, module_id: str
+        self, db: AsyncSession, user_uuid: str, module_uuid: str
     ) -> bool:
-        record = await self.get_user_access(db, user_id, module_id)
+        record = await self.get_user_access(db, user_uuid, module_uuid)
         if not record:
             return False
         await db.delete(record)
         return True
 
+    async def delete_user_access_by_uuids(
+        self, db: AsyncSession, user_uuid: str, module_uuid: str
+    ) -> bool:
+        return await self.delete_user_access(db, user_uuid, module_uuid)
+
     # ── Refresh Token Management ──────────────────────────────────────────────
 
     async def save_refresh_token(
-        self, db: AsyncSession, user_id: str, token: str, expires_at: str
+        self, db: AsyncSession, user_uuid: str, token: str, expires_at: str
     ) -> RefreshToken:
-        rt = RefreshToken(user_id=user_id, token=token, expires_at=expires_at)
+        rt = RefreshToken(user_uuid=user_uuid, token=token, expires_at=expires_at)
         db.add(rt)
         await db.flush()
         return rt
@@ -185,10 +234,10 @@ class RbacService:
             rt.is_revoked = True
             await db.flush()
 
-    async def revoke_all_user_tokens(self, db: AsyncSession, user_id: str) -> None:
+    async def revoke_all_user_tokens(self, db: AsyncSession, user_uuid: str) -> None:
         result = await db.execute(
             select(RefreshToken).where(
-                and_(RefreshToken.user_id == user_id, RefreshToken.is_revoked.is_(False))
+                and_(RefreshToken.user_uuid == user_uuid, RefreshToken.is_revoked.is_(False))
             )
         )
         tokens = result.scalars().all()

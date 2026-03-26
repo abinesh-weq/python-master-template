@@ -3,9 +3,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.common import ApiResponse
+from app.core.common import ApiResponse, ApiRouter
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_permission
+from app.modules.rbac.params import API_PREFIX
 from app.modules.rbac.schemas import (
     AccessControlResponse,
     ModuleResponse,
@@ -16,8 +17,8 @@ from app.modules.rbac.schemas import (
 )
 from app.modules.rbac.service import rbac_service
 
-router = APIRouter(
-    prefix="/api/v1/admin/rbac",
+router = ApiRouter(
+    prefix=API_PREFIX,
     tags=["Admin - RBAC Management"],
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "READ"))],
 )
@@ -25,7 +26,7 @@ router = APIRouter(
 
 # ── Roles ─────────────────────────────────────────────────────────────────────
 
-@router.get("/roles", response_model=ApiResponse)
+@router.get("/roles", response_model=ApiResponse[list[RoleResponse]])
 async def list_roles(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
@@ -38,7 +39,7 @@ async def list_roles(
 
 @router.post(
     "/roles",
-    response_model=ApiResponse,
+    response_model=ApiResponse[RoleResponse],
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "WRITE"))],
 )
 async def create_role(
@@ -54,7 +55,7 @@ async def create_role(
 
 @router.delete(
     "/roles/{uuid}",
-    response_model=ApiResponse,
+    response_model=ApiResponse[None],
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "DELETE"))],
 )
 async def delete_role(
@@ -71,7 +72,7 @@ async def delete_role(
 
 # ── Modules ───────────────────────────────────────────────────────────────────
 
-@router.get("/modules", response_model=ApiResponse)
+@router.get("/modules", response_model=ApiResponse[list[ModuleResponse]])
 async def list_modules(
     db: AsyncSession = Depends(get_db),
 ):
@@ -84,9 +85,9 @@ async def list_modules(
 
 # ── Role-Module Mapping Matrix ────────────────────────────────────────────────
 
-@router.get("/roles/{role_uuid}/modules", response_model=ApiResponse)
+@router.get("/roles/{role_uuid}/modules", response_model=ApiResponse[list[RoleModuleMappingResponse]])
 async def get_role_modules(role_uuid: str, db: AsyncSession = Depends(get_db)):
-    mappings = await rbac_service.get_role_modules(db, role_uuid)
+    mappings = await rbac_service.get_role_modules_by_uuid(db, role_uuid)
     return ApiResponse.success(
         data=[RoleModuleMappingResponse.model_validate(m).model_dump() for m in mappings]
     )
@@ -94,7 +95,7 @@ async def get_role_modules(role_uuid: str, db: AsyncSession = Depends(get_db)):
 
 @router.put(
     "/roles/{role_uuid}/modules/{module_uuid}",
-    response_model=ApiResponse,
+    response_model=ApiResponse[RoleModuleMappingResponse],
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "UPDATE"))],
 )
 async def upsert_role_module(
@@ -103,7 +104,7 @@ async def upsert_role_module(
     payload: PermissionToggleRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    mapping = await rbac_service.upsert_role_module(db, role_uuid, module_uuid, payload)
+    mapping = await rbac_service.upsert_role_module_by_uuids(db, role_uuid, module_uuid, payload)
 
     return ApiResponse.success(
         message="Role-module permissions updated.",
@@ -119,7 +120,7 @@ async def upsert_role_module(
 async def delete_role_module(
     role_uuid: str, module_uuid: str, db: AsyncSession = Depends(get_db)
 ):
-    deleted = await rbac_service.delete_role_module(db, role_uuid, module_uuid)
+    deleted = await rbac_service.delete_role_module_by_uuids(db, role_uuid, module_uuid)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found."
@@ -129,9 +130,9 @@ async def delete_role_module(
 
 # ── User Access Control Overrides ─────────────────────────────────────────────
 
-@router.get("/users/{user_uuid}/access", response_model=ApiResponse)
+@router.get("/users/{user_uuid}/access", response_model=ApiResponse[list[AccessControlResponse]])
 async def get_user_access(user_uuid: str, db: AsyncSession = Depends(get_db)):
-    records = await rbac_service.get_all_user_access(db, user_uuid)
+    records = await rbac_service.get_all_user_access_by_uuid(db, user_uuid)
     return ApiResponse.success(
         data=[AccessControlResponse.model_validate(r).model_dump() for r in records]
     )
@@ -139,7 +140,7 @@ async def get_user_access(user_uuid: str, db: AsyncSession = Depends(get_db)):
 
 @router.put(
     "/users/{user_uuid}/access/{module_uuid}",
-    response_model=ApiResponse,
+    response_model=ApiResponse[AccessControlResponse],
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "UPDATE"))],
 )
 async def upsert_user_access(
@@ -148,7 +149,7 @@ async def upsert_user_access(
     payload: PermissionToggleRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    record = await rbac_service.upsert_user_access(db, user_uuid, module_uuid, payload)
+    record = await rbac_service.upsert_user_access_by_uuids(db, user_uuid, module_uuid, payload)
     return ApiResponse.success(
         message="User access override updated.",
         data=AccessControlResponse.model_validate(record).model_dump(),
@@ -157,13 +158,13 @@ async def upsert_user_access(
 
 @router.delete(
     "/users/{user_uuid}/access/{module_uuid}",
-    response_model=ApiResponse,
+    response_model=ApiResponse[None],
     dependencies=[Depends(require_permission("RBAC_MANAGEMENT", "DELETE"))],
 )
 async def delete_user_access(
     user_uuid: str, module_uuid: str, db: AsyncSession = Depends(get_db)
 ):
-    deleted = await rbac_service.delete_user_access(db, user_uuid, module_uuid)
+    deleted = await rbac_service.delete_user_access_by_uuids(db, user_uuid, module_uuid)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Access override not found."

@@ -1,0 +1,4 @@
+# auth module constants
+API_PREFIX = "/api/v1/auth"
+RATE_LIMIT_REGISTRATION = "5/minute"
+DEFAULT_PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 15

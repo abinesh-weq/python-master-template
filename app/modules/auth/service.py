@@ -19,7 +19,9 @@ from app.modules.auth.schemas import (
     MfaPendingResponse,
     PasswordLoginRequest,
     RegisterRequest,
+    AdminRegisterRequest,
     ResetPasswordRequest,
+    ChangePasswordRequest,
     SocialLoginRequest,
     TokenResponse,
 )
@@ -37,7 +39,7 @@ class AuthService:
     async def register(
         self,
         db: AsyncSession,
-        payload: RegisterRequest,
+        payload: RegisterRequest | AdminRegisterRequest,
         skip_otp: bool = False,
         assigned_role_name: Optional[str] = None,
     ) -> UserLogin:
@@ -66,13 +68,14 @@ class AuthService:
         if not skip_otp:
             # Validate Email OTP if email was provided
             if payload.email:
-                if not payload.email_otp:
+                email_otp = getattr(payload, "email_otp", None)
+                if not email_otp:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Email OTP is required for registration.",
                     )
                 email_valid = await otp_service.verify_otp(
-                    db, identifier=payload.email, otp_type="EMAIL_OTP", otp_code=payload.email_otp
+                    db, identifier=payload.email, otp_type="EMAIL_OTP", otp_code=email_otp
                 )
                 if not email_valid:
                     raise HTTPException(
@@ -82,13 +85,14 @@ class AuthService:
 
             # Validate Mobile OTP if phone was provided
             if payload.phone_number:
-                if not payload.mobile_otp:
+                mobile_otp = getattr(payload, "mobile_otp", None)
+                if not mobile_otp:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Mobile OTP is required for registration.",
                     )
                 mobile_valid = await otp_service.verify_otp(
-                    db, identifier=payload.phone_number, otp_type="MOBILE_OTP", otp_code=payload.mobile_otp
+                    db, identifier=payload.phone_number, otp_type="MOBILE_OTP", otp_code=mobile_otp
                 )
                 if not mobile_valid:
                     raise HTTPException(
@@ -98,7 +102,7 @@ class AuthService:
 
         # Determine role
         role_name_to_lookup = assigned_role_name or payload.role_name
-        role_id = None
+        role_uuid = None
         
         if role_name_to_lookup:
             role_record = await rbac_service.get_role_by_name(db, role_name_to_lookup)
@@ -107,15 +111,15 @@ class AuthService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Role '{role_name_to_lookup}' not found."
                 )
-            role_id = role_record.id
+            role_uuid = role_record.uuid
 
-        if not role_id:
-            # Auto-assign default ROLE_USER for public registration
+        if not role_uuid:
+            # Auto-assign default USER for public registration
             default_role = await rbac_service.get_role_by_name(
                 db, settings.DEFAULT_USER_ROLE
             )
             if default_role:
-                role_id = default_role.id
+                role_uuid = default_role.uuid
 
         create_payload = UserCreateRequest(
             name=payload.username, # Default name to username if not provided separately
@@ -124,7 +128,7 @@ class AuthService:
             phone_number=payload.phone_number,
             password=payload.password,
             provider="LOCAL",
-            role_id=role_id,
+            role_uuid=role_uuid,
             is_verified=True # Registration via OTP implies verification
         )
         user = await user_service.create_user(db, create_payload)
@@ -150,16 +154,30 @@ class AuthService:
         user = await self._authenticate_user(db, payload.email, payload.password)
 
         if user.is_mfa_enabled:
+            if user.email:
+                recipient = user.email
+                template_code = "OTP_EMAIL"
+                msg = "MFA OTP has been sent. Please check your registered email."
+            elif user.phone_number:
+                recipient = user.phone_number
+                template_code = "OTP_SMS"
+                msg = "MFA OTP has been sent. Please check your registered mobile number."
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No valid email or mobile number found to send MFA OTP.",
+                )
+
             # Trigger OTP dispatch via integration engine
-            otp = await otp_service.send_otp(db, user.email, "MFA", settings.OTP_EXPIRE_MINUTES)
+            otp = await otp_service.send_otp(db, recipient, "MFA", settings.OTP_EXPIRE_MINUTES)
             print("MFA OTP: ", otp)
             await integration_service.dispatch(
                 db=db,
-                template_code="OTP_EMAIL",
-                recipient=user.email,
+                template_code=template_code,
+                recipient=recipient,
                 variables={"OTP": otp, "USERNAME": user.username},
             )
-            return MfaPendingResponse()
+            return MfaPendingResponse(message=msg)
 
         if payload.device_id:
             user.device_id = payload.device_id
@@ -183,54 +201,42 @@ class AuthService:
         await otp_service.invalidate_otp(db, email, "MFA")
         return await self._issue_tokens(db, user)
 
-    # ── Email OTP Login ────────────────────────────────────────────────────────
+    # ── OTP Login (unified) ────────────────────────────────────────────────────
 
-    async def login_email_otp(
-        self, db: AsyncSession, email: str, otp: str
+    async def login_otp(
+        self, db: AsyncSession, identifier: str, identifier_type: str, otp: str
     ) -> TokenResponse:
-        user = await user_service.get_by_email(db, email)
+        """
+        Single entry point for OTP-based login.
+        identifier_type is resolved by OtpLoginRequest before reaching here:
+          "email"  → lookup by email,  verify EMAIL_OTP
+          "mobile" → lookup by phone,  verify MOBILE_OTP
+        """
+        if identifier_type == "email":
+            user = await user_service.get_by_email(db, identifier)
+            otp_type = "EMAIL_OTP"
+            login_field = "email_otp_login_allowed"
+        else:
+            user = await user_service.get_by_phone(db, identifier)
+            otp_type = "MOBILE_OTP"
+            login_field = "mobile_otp_login_allowed"
+
         if not user or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found or inactive.",
             )
 
-        # Check if Email OTP login is allowed for this role
-        await self._check_login_allowed(db, user, "email_otp_login_allowed")
+        await self._check_login_allowed(db, user, login_field)
 
-        valid = await otp_service.verify_otp(db, email, "EMAIL_OTP", otp)
+        valid = await otp_service.verify_otp(db, identifier, otp_type, otp)
         if not valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired email OTP.",
-            )
-        # Invalidate OTP after use
-        await otp_service.invalidate_otp(db, email, "EMAIL_OTP")
-        return await self._issue_tokens(db, user)
-
-    # ── Mobile OTP Login ───────────────────────────────────────────────────────
-
-    async def login_mobile_otp(
-        self, db: AsyncSession, phone: str, otp: str
-    ) -> TokenResponse:
-        user = await user_service.get_by_phone(db, phone)
-        if not user or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or inactive.",
+                detail="Invalid or expired OTP.",
             )
 
-        # Check if Mobile OTP login is allowed for this role
-        await self._check_login_allowed(db, user, "mobile_otp_login_allowed")
-
-        valid = await otp_service.verify_otp(db, phone, "MOBILE_OTP", otp)
-        if not valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired mobile OTP.",
-            )
-        # Invalidate OTP after use
-        await otp_service.invalidate_otp(db, phone, "MOBILE_OTP")
+        await otp_service.invalidate_otp(db, identifier, otp_type)
         return await self._issue_tokens(db, user)
 
     # ── Social / SSO Login ─────────────────────────────────────────────────────
@@ -263,7 +269,7 @@ class AuthService:
                 username=profile.get("name", email.split("@")[0]),
                 email=email,
                 provider=payload.provider.upper(),
-                role_id=default_role.id if default_role else None,
+                role_uuid=default_role.uuid if default_role else None,
             )
             user = await user_service.create_user(db, create_payload)
         else:
@@ -294,25 +300,32 @@ class AuthService:
         Generates and dispatches OTP via integration engine.
         otp_type: EMAIL_OTP | MOBILE_OTP | MFA
         """
+        print(f"DEBUG: Request to send OTP of type '{otp_type}' to identifier '{identifier}'")
         otp = await otp_service.send_otp(db, identifier, otp_type, settings.OTP_EXPIRE_MINUTES)
 
         # Verification print
         print(f"DEBUG: OTP stored for {identifier} [{otp_type}] (hashed in DB)")
-
+        print(f"DEBUG: OTP: {otp}")
         # Determine channel and template
         if otp_type == "MOBILE_OTP":
-            await integration_service.dispatch(
-                db=db,
-                template_code="OTP_SMS",
-                recipient=identifier,
-                variables={"OTP": otp},
-            )
+            template_code = "OTP_SMS"
         else:
-            await integration_service.dispatch(
-                db=db,
-                template_code="OTP_EMAIL",
-                recipient=identifier,
-                variables={"OTP": otp},
+            template_code = "OTP_EMAIL"
+
+        dispatch_success = await integration_service.dispatch(
+            db=db,
+            template_code=template_code,
+            recipient=identifier,
+            variables={"OTP": otp},
+        )
+
+        if dispatch_success:
+            print(f"DEBUG: OTP dispatch succeeded for {identifier} using {template_code}")
+        else:
+            print(f"ERROR: OTP dispatch failed for {identifier} using {template_code}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Failed to send OTP; please try again later.",
             )
 
     async def verify_otp(self, db: AsyncSession, identifier: str, otp_type: str, otp: str) -> bool:
@@ -326,6 +339,7 @@ class AuthService:
             # Silent fail — don't reveal account existence
             return
         otp = await otp_service.send_otp(db, email, "PASSWORD_RESET", settings.OTP_EXPIRE_MINUTES)
+        print("OTP", otp)
         await integration_service.dispatch(
             db=db,
             template_code="PASSWORD_RESET_EMAIL",
@@ -353,6 +367,28 @@ class AuthService:
         user.password = hash_password(payload.new_password)
         # Invalidate OTP after use
         await otp_service.invalidate_otp(db, payload.email, "PASSWORD_RESET")
+        await db.flush()
+
+    async def change_password(
+        self, db: AsyncSession, user_uuid: str, payload: ChangePasswordRequest
+    ) -> None:
+        user = await user_service.get_by_uuid(db, user_uuid)
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found.",
+            )
+        if user.provider != "LOCAL":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This account uses {user.provider} login. Please change your password there.",
+            )
+        if not user.password or not verify_password(payload.old_password, user.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect old password.",
+            )
+        user.password = hash_password(payload.new_password)
         await db.flush()
 
     # ── Refresh Token Flow ─────────────────────────────────────────────────────
@@ -384,7 +420,7 @@ class AuthService:
             )
 
         # 3. Load user
-        user = await user_service.get_by_id(db, stored.user_id)
+        user = await user_service.get_by_uuid(db, stored.user_uuid)
         if not user or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -424,8 +460,8 @@ class AuthService:
 
     async def _check_login_allowed(self, db: AsyncSession, user: UserLogin, field: str):
         """Helper to verify if a role permits a specific login method."""
-        if user.role_id:
-            role = await rbac_service.get_role_by_id(db, user.role_id)
+        if user.role_uuid:
+            role = await rbac_service.get_role_by_uuid(db, user.role_uuid)
             if role and not getattr(role, field, True):
                 method_name = field.replace("_allowed", "").replace("_", " ").title()
                 raise HTTPException(
@@ -444,7 +480,7 @@ class AuthService:
         ).isoformat()
 
         await rbac_service.save_refresh_token(
-            db, user_id=user.id, token=refresh_token, expires_at=expires_at
+            db, user_uuid=user.uuid, token=refresh_token, expires_at=expires_at
         )
 
         return TokenResponse(

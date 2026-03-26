@@ -5,9 +5,10 @@ from fastapi_cache.decorator import cache
 from fastapi_cache import FastAPICache
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.common import ApiResponse, PaginatedResponse
+from app.core.common import ApiResponse, PaginatedResponse, ApiRouter
 from app.core.database import get_db
 from app.core.dependencies import require_permission
+from app.modules.predefined.params import API_PREFIX
 from app.modules.predefined.schemas import (
     PredefinedMasterCreateRequest,
     PredefinedMasterResponse,
@@ -15,14 +16,14 @@ from app.modules.predefined.schemas import (
 )
 from app.modules.predefined.service import predefined_service
 
-router = APIRouter(
-    prefix="/api/v1/predefined",
+router = ApiRouter(
+    prefix=API_PREFIX,
     tags=["Predefined Master"],
     dependencies=[Depends(require_permission("MASTER", "READ"))],
 )
 
 
-@router.get("/", response_model=ApiResponse)
+@router.get("/", response_model=ApiResponse[PaginatedResponse[PredefinedMasterResponse]])
 @cache(expire=3600)  # Mirrors Java @Cacheable — freeze HTTP response for 1 hour
 async def list_predefined(
     entity_type: Optional[str] = Query(None),
@@ -38,7 +39,7 @@ async def list_predefined(
         entity_type=entity_type,
         name=name,
         code=code,
-        parent_id=parent_uuid,
+        parent_uuid=parent_uuid,
         page=page,
         size=size,
     )
@@ -51,9 +52,9 @@ async def list_predefined(
     return ApiResponse.success(data=paginated.model_dump())
 
 
-@router.get("/{uuid}", response_model=ApiResponse)
-async def get_predefined(uuid: str, db: AsyncSession = Depends(get_db)):
-    record = await predefined_service.get_by_id(db, uuid)
+@router.get("/{uuid}", response_model=ApiResponse[PredefinedMasterResponse])
+async def get_predefined(record_uuid: str, db: AsyncSession = Depends(get_db)):
+    record = await predefined_service.get_by_uuid(db, record_uuid)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found.")
     return ApiResponse.success(
@@ -63,7 +64,7 @@ async def get_predefined(uuid: str, db: AsyncSession = Depends(get_db)):
 
 @router.post(
     "/",
-    response_model=ApiResponse,
+    response_model=ApiResponse[PredefinedMasterResponse],
     dependencies=[Depends(require_permission("MASTER", "WRITE"))],
 )
 async def create_predefined(
@@ -71,7 +72,7 @@ async def create_predefined(
     db: AsyncSession = Depends(get_db),
 ):
     record = await predefined_service.create(db, payload)
-    FastAPICache.clear()  # Mirrors Java @CacheEvict — bust all cached responses
+    await FastAPICache.clear()  # Mirrors Java @CacheEvict — bust all cached responses
     return ApiResponse.success(
         message="Record created.",
         data=PredefinedMasterResponse.model_validate(record).model_dump(),
@@ -80,18 +81,18 @@ async def create_predefined(
 
 @router.put(
     "/{uuid}",
-    response_model=ApiResponse,
+    response_model=ApiResponse[PredefinedMasterResponse],
     dependencies=[Depends(require_permission("MASTER", "UPDATE"))],
 )
 async def update_predefined(
-    uuid: str,
+    record_uuid: str,
     payload: PredefinedMasterUpdateRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    record = await predefined_service.update(db, uuid, payload)
+    record = await predefined_service.update(db, record_uuid, payload)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found.")
-    FastAPICache.clear()  # Bust cache on every mutation
+    await FastAPICache.clear()  # Bust cache on every mutation
     return ApiResponse.success(
         message="Record updated.",
         data=PredefinedMasterResponse.model_validate(record).model_dump(),
@@ -100,7 +101,7 @@ async def update_predefined(
 
 @router.delete(
     "/{uuid}",
-    response_model=ApiResponse,
+    response_model=ApiResponse[None],
     dependencies=[Depends(require_permission("MASTER", "DELETE"))],
 )
 async def delete_predefined(uuid: str, db: AsyncSession = Depends(get_db)):
@@ -108,5 +109,5 @@ async def delete_predefined(uuid: str, db: AsyncSession = Depends(get_db)):
     deleted = await predefined_service.delete(db, uuid)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found.")
-    FastAPICache.clear()  # Bust cache after structural deletion
+    await FastAPICache.clear()  # Bust cache after structural deletion
     return ApiResponse.success(message="Record deleted.")

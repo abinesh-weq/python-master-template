@@ -13,7 +13,8 @@ class RoleCreateRequest(BaseModel):
 
 
 class RoleResponse(BaseModel):
-    id: str
+    id: int
+    uuid: str
     name: str
     pwd_login_allowed: bool
     mobile_otp_login_allowed: bool
@@ -26,7 +27,8 @@ class RoleResponse(BaseModel):
 
 # ── Module Schemas ────────────────────────────────────────────────────────────
 class ModuleResponse(BaseModel):
-    id: str
+    id: int
+    uuid: str
     module_code: str
     display_name: Optional[str] = None
     is_active: bool
@@ -46,9 +48,10 @@ class PermissionToggleRequest(BaseModel):
 
 
 class RoleModuleMappingResponse(BaseModel):
-    id: str
-    role_id: str
-    module_id: str
+    id: int
+    uuid: str
+    role_uuid: str
+    module_uuid: str
     can_read: bool
     can_write: bool
     can_update: bool
@@ -60,9 +63,10 @@ class RoleModuleMappingResponse(BaseModel):
 
 # ── Access Control (User Override) Schemas ────────────────────────────────────
 class AccessControlResponse(BaseModel):
-    id: str
-    user_id: str
-    module_id: str
+    id: int
+    uuid: str
+    user_uuid: str
+    module_uuid: str
     can_read: bool
     can_write: bool
     can_update: bool

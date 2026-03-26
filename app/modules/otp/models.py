@@ -14,9 +14,8 @@ class OTPVerification(Base):
     """
     __tablename__ = "otp_verifications"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=generate_uuid
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     identifier: Mapped[str] = mapped_column(
         String(100), nullable=False, index=True
     )

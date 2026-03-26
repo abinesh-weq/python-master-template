@@ -31,7 +31,7 @@ class OTPService:
         """
         identifier = identifier.lower()
         otp_type = otp_type.upper()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         
         # 1. Check existing
         existing = await self.get_verification(db, identifier, otp_type)
@@ -66,7 +66,7 @@ class OTPService:
         """
         identifier = identifier.lower()
         otp_type = otp_type.upper()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         
         otp_record = await self.get_verification(db, identifier, otp_type)
         if not otp_record:

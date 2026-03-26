@@ -26,6 +26,41 @@ class ApiResponse(BaseModel, Generic[T]):
         return cls(status="ERROR", message=message, data=data)
 
 
+def get_default_error_responses() -> dict:
+    from fastapi import status as http_status
+
+    error_codes = {
+        http_status.HTTP_400_BAD_REQUEST: "Bad Request",
+        http_status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        http_status.HTTP_403_FORBIDDEN: "Forbidden",
+        http_status.HTTP_404_NOT_FOUND: "Not Found",
+        http_status.HTTP_409_CONFLICT: "Conflict",
+        http_status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
+    }
+
+    return {
+        code: {"model": ApiResponse, "description": description}
+        for code, description in error_codes.items()
+    }
+
+
+from fastapi import APIRouter
+
+
+class ApiRouter(APIRouter):
+    def add_api_route(self, path, endpoint, *, response_model=None, responses=None, **kwargs):
+        merged_responses = {} if responses is None else dict(responses)
+        for code, entry in get_default_error_responses().items():
+            merged_responses.setdefault(code, entry)
+        super().add_api_route(
+            path,
+            endpoint,
+            response_model=response_model,
+            responses=merged_responses,
+            **kwargs,
+        )
+
+
 # ── Pagination Wrapper ────────────────────────────────────────────────────────
 class PageableInfo(BaseModel):
     pageNumber: int

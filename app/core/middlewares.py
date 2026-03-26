@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import uuid
 from typing import Any, Optional
 
 from fastapi import Request
@@ -46,6 +47,36 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             elapsed_ms,
         )
         return response
+
+
+# ── Request ID Tracing Middleware ─────────────────────────────────────────────
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """
+    Adds unique request ID to each request for tracing and debugging.
+    Includes request ID in response headers and logs.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # Generate unique request ID
+        request_id = str(uuid.uuid4())
+        request.state.request_id = request_id
+        
+        # Add to logger context for this request
+        logger_adapter = RequestIdAdapter(logger, {"request_id": request_id})
+        
+        # Add request ID to response headers
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        
+        return response
+
+
+class RequestIdAdapter(logging.LoggerAdapter):
+    """
+    Logger adapter that includes request ID in all log messages.
+    """
+    def process(self, msg, kwargs):
+        return f"[request_id={self.extra['request_id']}] {msg}", kwargs
 
 
 # ── Audit Middleware (mirrors Enterprise Audit Interceptors) ──────────────────
@@ -122,7 +153,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         """Internal helper to identify user and persist audit record."""
         try:
             async with AsyncSessionLocal() as db:
-                user_id = None
+                user_uuid = None
                 username = None
                 
                 # Identify user from JWT
@@ -135,7 +166,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         if email:
                             user = await user_service.get_by_email(db, email)
                             if user:
-                                user_id = user.id
+                                user_uuid = user.uuid
                                 username = user.username
                     except Exception:
                         pass
@@ -150,7 +181,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
                 await audit_service.log(
                     db=db,
-                    user_id=user_id,
+                    user_uuid=user_uuid,
                     username=username,
                     action=action_name,
                     module=module,
