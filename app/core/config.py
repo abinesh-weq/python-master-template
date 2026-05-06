@@ -14,11 +14,11 @@ class Settings(BaseSettings):
     AUTH_ENABLED: bool = True  # Set to False for local dev (bypasses JWT and RBAC)
 
     # ── Database (MySQL) ──────────────────────────────────────────────────────
-    DB_HOST: str = "localhost"
+    DB_HOST: str = ""
     DB_PORT: int = 3306
-    DB_USER: str = "root"
-    DB_PASSWORD: str = "password"
-    DB_NAME: str = "weq_db"
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
+    DB_NAME: str = ""
 
     # ── Security (JWT & Password) ─────────────────────────────────────────────
     JWT_SECRET_KEY: str  # Required - no default for security
@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     def validate_jwt_secret(cls, v: str) -> str:
         if len(v) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters long for security")
+        return v
+
+    @field_validator("DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME")
+    @classmethod
+    def validate_database_fields(cls, v: str) -> str:
+        if not v:
+            raise ValueError(f"Database configuration field must be provided in .env file")
         return v
 
     # ── CORS ──────────────────────────────────────────────────────────────────
@@ -80,7 +87,7 @@ class Settings(BaseSettings):
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 
-    model_config = {"env_file": ".env", "case_sensitive": True}
+    model_config = {"env_file": ".env", "case_sensitive": True, "extra": "allow"}
 
 
 @lru_cache()

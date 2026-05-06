@@ -1,21 +1,20 @@
-"""Seed Data: Roles, Modules, Admin Users, Templates
+"""seed initial data
 
-Revision ID: 0005_seed
-Revises: 0004_integration_predefined
-Create Date: 2026-03-23 11:10:00
+Revision ID: c1ae134529ba
+Revises: 95e27ffe906e
+Create Date: 2026-05-06 17:08:43.724104
 
 """
-
 from typing import Sequence, Union
 import uuid
 from datetime import datetime
-
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers
-revision: str = "0005_seed"
-down_revision: Union[str, None] = "0004_integration_predefined"
+
+# revision identifiers, used by Alembic.
+revision: str = 'c1ae134529ba'
+down_revision: Union[str, None] = '95e27ffe906e'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -102,3 +101,4 @@ def downgrade() -> None:
     op.execute("DELETE FROM role_module_mapping")
     op.execute("DELETE FROM module_master")
     op.execute("DELETE FROM role_master")
+

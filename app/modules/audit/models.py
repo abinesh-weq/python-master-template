@@ -1,23 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import JSON, String, Text, Integer
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, generate_uuid
+from app.core.database import Base
 
 
 class AuditLog(Base):
     """
-    Tracks sensitive user and system actions (RBAC changes, profile updates, logins, etc).
+    Tracks sensitive user and system actions (RBAC changes, profile updates, logins, etc.).
     """
 
     __tablename__ = "audit_logs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
-    
     # Who did it
     user_uuid: Mapped[Optional[str]] = mapped_column(
         String(36), sa.ForeignKey("user_login.uuid", ondelete="SET NULL"), nullable=True
@@ -41,6 +38,3 @@ class AuditLog(Base):
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status_code: Mapped[int] = mapped_column(nullable=False, default=200)
-    
-    # Timestamps
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

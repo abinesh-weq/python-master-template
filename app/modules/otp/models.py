@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, DateTime, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, generate_uuid
+from app.core.database import Base
 
 
 class OTPVerification(Base):
@@ -14,8 +14,6 @@ class OTPVerification(Base):
     """
     __tablename__ = "otp_verifications"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     identifier: Mapped[str] = mapped_column(
         String(100), nullable=False, index=True
     )
@@ -28,24 +26,13 @@ class OTPVerification(Base):
         UniqueConstraint("identifier", "otp_type", name="uq_otp_identifier_type"),
     )
     
-    # Expiry and Verification
+    # Expiry and Verification - MySQL compatible datetime
     expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+        DateTime, nullable=False
     )
     verified_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime, nullable=True
     )
     
     # Attempt limiting
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    
-    # Standard Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-        nullable=False
-    )

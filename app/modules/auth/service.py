@@ -12,8 +12,12 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    validate_access_token,
+    validate_refresh_token,
     hash_password,
     verify_password,
+    get_token_subject,
+    get_token_jti,
 )
 from app.modules.auth.schemas import (
     MfaPendingResponse,
@@ -316,7 +320,7 @@ class AuthService:
             db=db,
             template_code=template_code,
             recipient=identifier,
-            variables={"OTP": otp},
+            variables={"OTP": otp, "USERNAME": ""},
         )
 
         if dispatch_success:
@@ -393,42 +397,47 @@ class AuthService:
 
     # ── Refresh Token Flow ─────────────────────────────────────────────────────
 
-    async def refresh_access_token(
-        self, db: AsyncSession, refresh_token: str
-    ) -> TokenResponse:
+    async def refresh_token(self, db: AsyncSession, refresh_token: str) -> TokenResponse:
         """
         Validates refresh token from DB, revokes old token (rotation),
         issues a new access + refresh pair.
+        Enhanced with proper token validation per specification.
         """
-        # 1. Verify JWT signature & expiry
+        # 1. Validate refresh token structure and claims
         try:
-            payload = decode_token(refresh_token)
-            if payload.get("type") != "refresh":
-                raise JWTError("Not a refresh token")
-        except JWTError:
+            payload = validate_refresh_token(refresh_token)
+            user_email = payload.get("sub")  # Email as subject per specification
+            jti = payload.get("jti")
+        except HTTPException:
+            raise
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired refresh token.",
+                detail="Invalid refresh token format.",
             )
 
         # 2. Check DB — token must exist and not be revoked
         stored = await rbac_service.get_refresh_token(db, refresh_token)
-        if not stored:
+        if not stored or stored.is_revoked:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token has been revoked or does not exist.",
             )
 
-        # 3. Load user
-        user = await user_service.get_by_uuid(db, stored.user_uuid)
+        # 3. Load user by email (JWT subject)
+        user = await user_service.get_by_email(db, user_email)
         if not user or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User account is inactive.",
             )
 
-        # 4. Rotate — revoke old, issue new pair
+        # 5. Rotate — revoke old, issue new pair (proper token rotation)
         await rbac_service.revoke_refresh_token(db, refresh_token)
+        
+        # Revoke all other refresh tokens for this user for enhanced security
+        await rbac_service.revoke_all_user_tokens(db, user_uuid)
+        
         return await self._issue_tokens(db, user)
 
     # ── Internal Helpers ───────────────────────────────────────────────────────
@@ -471,12 +480,13 @@ class AuthService:
 
     async def _issue_tokens(self, db: AsyncSession, user: UserLogin) -> TokenResponse:
         """Creates access + refresh token pair and persists refresh token."""
-        access_token = create_access_token(subject=user.email)
+        # Use user email as subject per specification
+        access_token = create_access_token(subject=user.email, extra_claims={"uuid": user.uuid})
         refresh_token = create_refresh_token(subject=user.email)
 
         expires_at = (
             datetime.now(timezone.utc)
-            + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            + timedelta(days=7)  # Fixed 7 days per specification
         ).isoformat()
 
         await rbac_service.save_refresh_token(
@@ -487,7 +497,7 @@ class AuthService:
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            expires_in=15 * 60,  # Fixed 15 minutes in seconds
         )
 
     @staticmethod

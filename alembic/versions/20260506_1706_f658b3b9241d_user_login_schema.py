@@ -1,19 +1,21 @@
-"""UserLogin Schema
+"""user login schema
 
-Revision ID: 0002_users
-Revises: 0001_rbac
-Create Date: 2026-03-23 11:06:00
+Revision ID: f658b3b9241d
+Revises: ffb9d879cae1
+Create Date: 2026-05-06 17:06:46.922859
 
 """
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers
-revision: str = '0002_users'
-down_revision: Union[str, None] = '0001_rbac'
+
+# revision identifiers, used by Alembic.
+revision: str = 'f658b3b9241d'
+down_revision: Union[str, None] = 'ffb9d879cae1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
 
 def upgrade() -> None:
     # --- user_login ---

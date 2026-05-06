@@ -1,19 +1,21 @@
-"""RBAC Mappings, Audit and OTP Schema
+"""role modules audit schema
 
-Revision ID: 0003_links_audit_otp
-Revises: 0002_users
-Create Date: 2026-03-23 11:07:00
+Revision ID: 8147742a2f5b
+Revises: f658b3b9241d
+Create Date: 2026-05-06 17:07:50.469270
 
 """
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers
-revision: str = '0003_links_audit_otp'
-down_revision: Union[str, None] = '0002_users'
+
+# revision identifiers, used by Alembic.
+revision: str = '8147742a2f5b'
+down_revision: Union[str, None] = 'f658b3b9241d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
 
 def upgrade() -> None:
     # --- role_module_mapping ---

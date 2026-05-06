@@ -1,19 +1,21 @@
-"""Integration and Predefined Schema
+"""predefined module schema
 
-Revision ID: 0004_integration_predefined
-Revises: 0003_links_audit_otp
-Create Date: 2026-03-23 11:08:00
+Revision ID: 95e27ffe906e
+Revises: 8147742a2f5b
+Create Date: 2026-05-06 17:08:20.414050
 
 """
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers
-revision: str = '0004_integration_predefined'
-down_revision: Union[str, None] = '0003_links_audit_otp'
+
+# revision identifiers, used by Alembic.
+revision: str = '95e27ffe906e'
+down_revision: Union[str, None] = '8147742a2f5b'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
 
 def upgrade() -> None:
     # --- communication_provider_config ---

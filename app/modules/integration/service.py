@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import generate_uuid
+from app.core.common_models.base_model import generate_uuid
 from app.modules.integration.models import (
     CommunicationProviderConfig,
     NotificationLog,
@@ -70,7 +70,7 @@ class IntegrationService:
 
         rendered_body = body
         for key, value in variables.items():
-            rendered_body = rendered_body.replace("{{" + key + "}}", str(value))
+            rendered_body = rendered_body.replace("{" + key + "}", str(value))
 
         message = EmailMessage()
         message["From"] = from_address

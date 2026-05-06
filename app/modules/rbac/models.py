@@ -1,7 +1,7 @@
-from sqlalchemy import Boolean, ForeignKey, String, Integer
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, generate_uuid
+from app.core.database import Base
 
 
 # ── Role Master ───────────────────────────────────────────────────────────────
@@ -13,8 +13,6 @@ class RoleMaster(Base):
 
     __tablename__ = "role_master"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
 
     # Login method gates
@@ -35,8 +33,6 @@ class ModuleMaster(Base):
 
     __tablename__ = "module_master"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     module_code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -51,8 +47,6 @@ class RoleModuleMapping(Base):
 
     __tablename__ = "role_module_mapping"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     role_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("role_master.uuid", ondelete="CASCADE"), nullable=False
     )
@@ -76,8 +70,6 @@ class AccessControlMaster(Base):
 
     __tablename__ = "access_control_master"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     user_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("user_login.uuid", ondelete="CASCADE"), nullable=False
     )
@@ -101,8 +93,6 @@ class RefreshToken(Base):
 
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     user_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("user_login.uuid", ondelete="CASCADE"), nullable=False
     )

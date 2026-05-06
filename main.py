@@ -14,12 +14,13 @@ from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from app.core.middlewares import AuditMiddleware, LoggingMiddleware, RequestIdMiddleware, limiter
 
-# ── Module Routers ────────────────────────────────────────────────────────────
-from app.modules.auth.router import router as auth_router
-from app.modules.users.router import router as users_router
-from app.modules.rbac.router import router as rbac_router
-from app.modules.predefined.router import router as predefined_router
-from app.modules.integration.router import router as integration_router
+# ── Module Routers ────────────────────────────────────────────────────
+from app.modules.auth.routers import router as auth_router
+from app.modules.users.routers import router as users_router
+from app.modules.rbac.routers import router as rbac_router
+from app.modules.predefined.routers import router as predefined_router
+from app.modules.integration.routers import router as integration_router
+from app.modules.documents.routers import router as documents_router
 
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -96,12 +97,24 @@ async def shutdown_event():
         logging.getLogger(__name__).warning(f"⚠️ Cache cleanup failed: {e}")
 
 
+# ── Static Files ────────────────────────────────────────────────────────────
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Create uploads directory if it doesn't exist
+uploads_dir = "data/uploads"
+os.makedirs(uploads_dir, exist_ok=True)
+
+# Mount static files for document uploads
+app.mount("/static/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
 # ── Route Registration ────────────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(rbac_router)
 app.include_router(predefined_router)
 app.include_router(integration_router)
+app.include_router(documents_router)
 
 
 # ── Health & Cache APIs ───────────────────────────────────────────────────────

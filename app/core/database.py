@@ -1,9 +1,4 @@
-import uuid
-from datetime import datetime, timezone
-
-from sqlalchemy import DateTime, String, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.config import settings
 
@@ -38,28 +33,6 @@ async def get_db():
             await session.close()
 
 
-# ── Abstract Base Entity ──────────────────────────────────────────────────────
-class Base(DeclarativeBase):
-    """
-    Mirrors Java @MappedSuperclass BaseEntity.
-    Every SQLAlchemy model inherits audit columns automatically.
-    """
+# Import Base from common_models/base_model.py
+from app.core.common_models.base_model import Base
 
-    created_by: Mapped[str] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-    )
-    updated_by: Mapped[str] = mapped_column(String(100), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-
-def generate_uuid() -> str:
-    """Helper — returns a new UUID4 string for use as PK."""
-    return str(uuid.uuid4())
