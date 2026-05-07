@@ -32,18 +32,18 @@ router = ApiRouter(prefix=API_PREFIX, tags=["Authentication"])
 
 
 # ── Public Registration (OTP required) ───────────────────────────────────────
-@router.post("/register", response_model=ApiResponse[RegisterResponse])
+@router.post("/register", response_model=ApiResponse[TokenResponse])
 @limiter.limit("5/minute")
 async def register(
     request: Request,
     payload: RegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    user = await auth_service.register(db, payload, skip_otp=False)
+    tokens = await auth_service.register_with_tokens(db, payload, skip_otp=False)
     
     return ApiResponse.success(
         message="Registration successful.",
-        data={"id": user.id, "email": user.email},
+        data=tokens.model_dump(),
     )
 
 
@@ -208,7 +208,7 @@ async def refresh_token(
     payload: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    tokens = await auth_service.refresh_access_token(db, payload.refresh_token)
+    tokens = await auth_service.refresh_token(db, payload.refresh_token)
     return ApiResponse.success(
         message="Token refreshed successfully.", data=tokens.model_dump()
     )

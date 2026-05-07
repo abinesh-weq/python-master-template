@@ -68,9 +68,18 @@ class AdminRegisterRequest(BaseRegisterRequest):
 
 # ── Password Login ────────────────────────────────────────────────────────────
 class PasswordLoginRequest(BaseModel):
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
     password: str
     device_id: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_identifier(self):
+        if not self.email and not self.phone_number:
+            raise ValueError('Either email or phone number must be provided')
+        if not self.password:
+            raise ValueError('Password must be provided')
+        return self
 
 
 # ── MFA Login ─────────────────────────────────────────────────────────────────
@@ -295,7 +304,7 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    expires_in: int  # seconds
+    expires_in_minutes: int  # seconds
 
 
 class MfaPendingResponse(BaseModel):

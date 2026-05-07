@@ -146,6 +146,23 @@ class AuthService:
                 
         return user
 
+    async def register_with_tokens(
+        self,
+        db: AsyncSession,
+        payload: RegisterRequest | AdminRegisterRequest,
+        skip_otp: bool = False,
+        assigned_role_name: Optional[str] = None,
+    ) -> TokenResponse:
+        """
+        Register user and immediately issue tokens (auto-login).
+        Same validation as register() but returns TokenResponse.
+        """
+        # Reuse existing registration logic
+        user = await self.register(db, payload, skip_otp, assigned_role_name)
+        
+        # Issue tokens immediately (auto-login)
+        return await self._issue_tokens(db, user)
+
     # ── Password Login Flow ────────────────────────────────────────────────────
 
     async def login_password(
@@ -154,8 +171,34 @@ class AuthService:
         """
         If MFA is enabled → send OTP and return 202-style MfaPendingResponse.
         Else → issue full token pair.
+        Supports both email and phone number login.
         """
-        user = await self._authenticate_user(db, payload.email, payload.password)
+        # Determine identifier and lookup method
+        if payload.email:
+            identifier = payload.email
+            user = await user_service.get_by_email(db, identifier)
+        else:
+            identifier = payload.phone_number
+            user = await user_service.get_by_phone(db, identifier)
+        
+        if not user or not user.is_active:
+            # Provide specific error based on identifier type
+            if payload.email:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Email not registered. Please sign up first.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Phone number not registered. Please sign up first.",
+                )
+        
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is inactive. Please contact support.",
+            )
 
         if user.is_mfa_enabled:
             if user.email:
@@ -183,6 +226,28 @@ class AuthService:
             )
             return MfaPendingResponse(message=msg)
 
+        # Check if Password login is allowed for this role
+        await self._check_login_allowed(db, user, "pwd_login_allowed")
+
+        if user.provider != "LOCAL":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This account uses {user.provider} login. Use social login instead.",
+            )
+        
+        if not user.password or not verify_password(payload.password, user.password):
+            # Provide specific error based on identifier type
+            if payload.email:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid phone number or password.",
+                )
+        
         if payload.device_id:
             user.device_id = payload.device_id
             await db.flush()
@@ -225,10 +290,22 @@ class AuthService:
             otp_type = "MOBILE_OTP"
             login_field = "mobile_otp_login_allowed"
 
-        if not user or not user.is_active:
+        if not user:
+            # Provide specific error based on identifier type
+            if identifier_type == "email":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Email not registered. Please sign up first.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Phone number not registered. Please sign up first.",
+                )
+        if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or inactive.",
+                detail="Account is inactive. Please contact support.",
             )
 
         await self._check_login_allowed(db, user, login_field)
@@ -377,10 +454,15 @@ class AuthService:
         self, db: AsyncSession, user_uuid: str, payload: ChangePasswordRequest
     ) -> None:
         user = await user_service.get_by_uuid(db, user_uuid)
-        if not user or not user.is_active:
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found.",
+                detail="Email not registered. Please sign up first.",
+            )
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is inactive. Please contact support.",
             )
         if user.provider != "LOCAL":
             raise HTTPException(
@@ -436,7 +518,7 @@ class AuthService:
         await rbac_service.revoke_refresh_token(db, refresh_token)
         
         # Revoke all other refresh tokens for this user for enhanced security
-        await rbac_service.revoke_all_user_tokens(db, user_uuid)
+        await rbac_service.revoke_all_user_tokens(db, user.uuid)
         
         return await self._issue_tokens(db, user)
 
@@ -446,10 +528,15 @@ class AuthService:
         self, db: AsyncSession, email: str, password: str
     ) -> UserLogin:
         user = await user_service.get_by_email(db, email)
-        if not user or not user.is_active:
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email not registered. Please sign up first.",
+            )
+        if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials.",
+                detail="Account is inactive. Please contact support.",
             )
 
         # Check if Password login is allowed for this role
@@ -463,7 +550,7 @@ class AuthService:
         if not user.password or not verify_password(password, user.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials.",
+                detail="Invalid email or password.",
             )
         return user
 
@@ -497,7 +584,7 @@ class AuthService:
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            expires_in=15 * 60,  # Fixed 15 minutes in seconds
+            expires_in_minutes=15,
         )
 
     @staticmethod

@@ -84,8 +84,9 @@ class OTPService:
         is_valid = pwd_context.verify(otp_code, otp_record.otp_hash)
         
         if is_valid:
-            otp_record.verified_at = now
-            otp_record.attempt_count = 0 # reset on success
+            # Consume OTP after successful verification
+            await self.invalidate_otp(db, identifier, otp_type)
+            return True
         else:
             otp_record.attempt_count += 1
             
