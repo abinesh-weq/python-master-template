@@ -1,8 +1,7 @@
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
-from app.core.common_models.base_model import generate_uuid
+from app.core.common_models.base_model import Base
 
 
 # ── Communication Provider Config ─────────────────────────────────────────────
@@ -11,8 +10,6 @@ class CommunicationProviderConfig(Base):
 
     __tablename__ = "communication_provider_config"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     provider_name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "TWILIO", "SENDGRID"
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)   # SMS | EMAIL | PUSH
     priority: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -25,8 +22,6 @@ class ProviderApiMetadata(Base):
 
     __tablename__ = "provider_api_metadata"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     provider_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("communication_provider_config.uuid", ondelete="CASCADE"), nullable=False
     )
@@ -47,8 +42,6 @@ class ProviderApiMapping(Base):
 
     __tablename__ = "provider_api_mapping"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     provider_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("communication_provider_config.uuid", ondelete="CASCADE"), nullable=False
     )
@@ -65,8 +58,6 @@ class NotificationTemplateMaster(Base):
 
     __tablename__ = "notification_template_master"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)  # OTP_EMAIL, OTP_SMS
     subject: Mapped[str] = mapped_column(String(500), nullable=True)
     # Full HTML or plain-text body with {{VARIABLE}} placeholders
@@ -81,8 +72,6 @@ class NotificationLog(Base):
 
     __tablename__ = "notification_log"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     recipient: Mapped[str] = mapped_column(String(200), nullable=False)  # email or phone
     channel: Mapped[str] = mapped_column(String(20), nullable=False)
     template_code: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -98,8 +87,6 @@ class NotificationPayloadLog(Base):
 
     __tablename__ = "notification_payload_log"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), default=generate_uuid, unique=True, index=True)
     notification_log_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("notification_log.uuid", ondelete="CASCADE"), nullable=False
     )

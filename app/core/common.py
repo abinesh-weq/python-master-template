@@ -10,7 +10,7 @@ class ApiResponse(BaseModel, Generic[T]):
     """
     Mirrors Java ApiResponse<T>.
     Every endpoint MUST return this shape:
-        {"status": "SUCCESS|ERROR", "message": "...", "data": {...}}
+        {"status": "success|error", "message": "...", "data": {...}}
     """
 
     status: str
@@ -19,11 +19,11 @@ class ApiResponse(BaseModel, Generic[T]):
 
     @classmethod
     def success(cls, message: str = "Success", data: Any = None) -> "ApiResponse":
-        return cls(status="SUCCESS", message=message, data=data)
+        return cls(status="success", message=message, data=data)
 
     @classmethod
     def error(cls, message: str = "An error occurred", data: Any = None) -> "ApiResponse":
-        return cls(status="ERROR", message=message, data=data)
+        return cls(status="error", message=message, data=data)
 
 
 def get_default_error_responses() -> dict:

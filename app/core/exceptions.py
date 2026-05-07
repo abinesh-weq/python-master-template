@@ -15,7 +15,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     Mirrors Java @RestControllerAdvice GlobalExceptionHandler.
 
     Every unhandled error is forced into:
-        {"status": "ERROR", "errorCode": "...", "message": "..."}
+        {"status": "error", "errorCode": "...", "message": "..."}
     so the Frontend never receives an unstructured crash response.
     """
 
@@ -25,7 +25,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "status": "ERROR",
+                "status": "error",
                 "errorCode": str(exc.status_code),
                 "message": exc.detail,
                 "data": None,
@@ -44,7 +44,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
-                "status": "ERROR",
+                "status": "error",
                 "errorCode": "422",
                 "message": "; ".join(messages),
                 "data": None,
@@ -58,7 +58,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
-                "status": "ERROR",
+                "status": "error",
                 "errorCode": "409",
                 "message": "Database integrity error.",
                 "data": None,
@@ -71,7 +71,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
-                "status": "ERROR",
+                "status": "error",
                 "errorCode": "400",
                 "message": "Invalid data format for database operation.",
                 "data": None,
@@ -84,7 +84,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
-                "status": "ERROR",
+                "status": "error",
                 "errorCode": "503",
                 "message": "Database service unavailable.",
                 "data": None,
@@ -105,7 +105,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
-                "status": "ERROR",
+                "status": "error",
                 "errorCode": "500",
                 "message": f"Internal Server Exception: {str(exc)}",
                 "data": None,

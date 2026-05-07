@@ -70,6 +70,26 @@ class Settings(BaseSettings):
     DEFAULT_USER_ROLE: str = "user"
     DEFAULT_ADMIN_ROLE: str = "admin"
 
+    # ── Environment ────────────────────────────────────────────────────────────
+    ENVIRONMENT: str = "DEV"  # DEV | PROD
+
+    # ── Storage Configuration ─────────────────────────────────────────────────
+    LOCAL_STORAGE_PATH: str = "data/uploads"
+    LOCAL_STORAGE_URL: str = "/static/uploads"
+    
+    # ── AWS Configuration ─────────────────────────────────────────────────────
+    AWS_REGION: str = "us-east-1"
+    AWS_SSM_PARAMETER_NAME: str = "/weq/storage/config"
+    
+    # ── GCP Configuration ─────────────────────────────────────────────────────
+    GCP_PROJECT_ID: str = ""
+    GCS_BUCKET: str = ""
+    GCP_CREDENTIALS_PATH: str = ""
+    
+    # ── Redis Configuration ───────────────────────────────────────────────────
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CACHE_TTL_SECONDS: int = 3600
+
     # ── Computed DB URLs ──────────────────────────────────────────────────────
     @property
     def DATABASE_URL(self) -> str:

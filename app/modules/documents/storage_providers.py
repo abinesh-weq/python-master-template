@@ -109,13 +109,20 @@ class LocalStorageProvider(BaseStorageProvider):
 
 class S3StorageProvider(BaseStorageProvider):
     """
-    Amazon S3 storage provider using boto3.
-    Requires AWS credentials and bucket configuration.
+    Amazon S3 storage provider using boto3 with AWS credential provider chain.
+    Uses STS for temporary credentials and SSM Parameter Store for configuration.
+    
+    Authentication Flow:
+    1. Local Development: AWS SSO login -> STS provides temporary credentials
+    2. Staging/Production: IAM role -> AWS injects temporary credentials
+    3. boto3 automatically detects credentials via provider chain
+    4. Configuration loaded from SSM Parameter Store
     """
 
-    def __init__(self, bucket_name: str = None, aws_region: str = None):
-        self.bucket_name = bucket_name or getattr(settings, 'AWS_S3_BUCKET', '')
+    def __init__(self, ssm_parameter_name: str = None, aws_region: str = None):
+        self.ssm_parameter_name = ssm_parameter_name or getattr(settings, 'AWS_SSM_PARAMETER_NAME', '/weq/storage/config')
         self.aws_region = aws_region or getattr(settings, 'AWS_REGION', 'us-east-1')
+        self.config = {}
         
         # Lazy import boto3 to avoid dependency issues
         try:
@@ -125,15 +132,43 @@ class S3StorageProvider(BaseStorageProvider):
             self.boto3 = boto3
             self.ClientError = ClientError
             
-            # Initialize S3 client
+            # Load configuration from SSM Parameter Store
+            self._load_config_from_ssm()
+            
+            # Initialize S3 client with credential provider chain
+            # boto3 automatically handles: env vars, AWS CLI login, SSO session, IAM role
             self.s3_client = boto3.client(
                 's3',
-                region_name=self.aws_region,
-                aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID', ''),
-                aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', '')
+                region_name=self.aws_region
+                # No explicit credentials - let boto3 use provider chain
             )
+            
         except ImportError:
             raise ImportError("boto3 is required for S3StorageProvider. Install with: pip install boto3")
+    
+    def _load_config_from_ssm(self):
+        """Load storage configuration from AWS Systems Manager Parameter Store"""
+        try:
+            ssm_client = self.boto3.client('ssm', region_name=self.aws_region)
+            
+            response = ssm_client.get_parameter(
+                Name=self.ssm_parameter_name,
+                WithDecryption=True
+            )
+            
+            import json
+            self.config = json.loads(response['Parameter']['Value'])
+            
+            # Validate required configuration
+            if not self.config.get('bucketName'):
+                raise ValueError("bucketName not found in SSM parameter")
+                
+            self.bucket_name = self.config['bucketName']
+            
+        except self.boto3.exceptions.ClientError as e:
+            raise Exception(f"Failed to load configuration from SSM: {e}")
+        except json.JSONDecodeError as e:
+            raise Exception(f"Invalid JSON in SSM parameter: {e}")
 
     def _generate_file_key(self, filename: str) -> str:
         """Generate unique S3 object key"""
@@ -150,22 +185,31 @@ class S3StorageProvider(BaseStorageProvider):
             # Reset file pointer
             file_data.seek(0)
             
-            # Upload to S3
+            # Upload to S3 with enhanced metadata
+            upload_args = {
+                'ContentType': content_type,
+                'Metadata': {
+                    'original_filename': filename,
+                    'upload_timestamp': datetime.utcnow().isoformat(),
+                    'environment': self.config.get('environment', 'development')
+                }
+            }
+            
+            # Add server-side encryption if configured
+            if self.config.get('encryption'):
+                upload_args['ServerSideEncryption'] = self.config['encryption']
+            
             self.s3_client.upload_fileobj(
                 file_data,
                 self.bucket_name,
                 file_key,
-                ExtraArgs={
-                    'ContentType': content_type,
-                    'Metadata': {
-                        'original_filename': filename,
-                        'upload_timestamp': datetime.utcnow().isoformat()
-                    }
-                }
+                ExtraArgs=upload_args
             )
             
-            # Generate public URL (if bucket is public)
-            public_url = f"https://{self.bucket_name}.s3.{self.aws_region}.amazonaws.com/{file_key}"
+            # Generate public URL only if bucket is configured as public
+            public_url = None
+            if self.config.get('publicAccess', False):
+                public_url = f"https://{self.bucket_name}.s3.{self.aws_region}.amazonaws.com/{file_key}"
             
             return file_key, public_url
             
@@ -323,6 +367,11 @@ class GCSStorageProvider(BaseStorageProvider):
 def get_storage_provider(provider_type: str) -> BaseStorageProvider:
     """
     Factory function to get appropriate storage provider.
+    
+    For S3 provider, uses modern AWS authentication flow:
+    - Local: AWS SSO login -> STS temporary credentials
+    - Production: IAM role -> AWS injected credentials
+    - Configuration from SSM Parameter Store
     """
     if provider_type == "LOCAL":
         return LocalStorageProvider()
