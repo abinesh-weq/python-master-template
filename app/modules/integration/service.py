@@ -6,7 +6,7 @@ from email.message import EmailMessage
 from typing import List, Optional, Tuple
 
 import httpx
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common_models.base_model import generate_uuid
@@ -271,9 +271,9 @@ class IntegrationService:
     ) -> Tuple[List[CommunicationProviderConfig], int]:
         query = select(CommunicationProviderConfig)
         total_result = await db.execute(
-            select(CommunicationProviderConfig).with_only_columns([CommunicationProviderConfig.id])
+            select(func.count(CommunicationProviderConfig.id))
         )
-        total = len(total_result.all())
+        total = total_result.scalar()
         
         result = await db.execute(query.offset(page * size).limit(size))
         return result.scalars().all(), total
@@ -360,9 +360,9 @@ class IntegrationService:
             query = query.where(ProviderApiMapping.provider_uuid == provider_uuid)
         
         total_result = await db.execute(
-            query.with_only_columns([ProviderApiMapping.id])
+            select(func.count(ProviderApiMapping.id))
         )
-        total = len(total_result.all())
+        total = total_result.scalar()
         
         result = await db.execute(query.offset(page * size).limit(size))
         return result.scalars().all(), total
@@ -409,9 +409,9 @@ class IntegrationService:
     ) -> Tuple[List[NotificationTemplateMaster], int]:
         query = select(NotificationTemplateMaster)
         total_result = await db.execute(
-            select(NotificationTemplateMaster).with_only_columns([NotificationTemplateMaster.id])
+            select(func.count(NotificationTemplateMaster.id))
         )
-        total = len(total_result.all())
+        total = total_result.scalar()
         
         result = await db.execute(query.offset(page * size).limit(size))
         return result.scalars().all(), total
@@ -458,9 +458,9 @@ class IntegrationService:
     ) -> Tuple[List[NotificationLog], int]:
         query = select(NotificationLog).order_by(NotificationLog.id.desc())
         total_result = await db.execute(
-            select(NotificationLog).with_only_columns([NotificationLog.id])
+            select(func.count(NotificationLog.id))
         )
-        total = len(total_result.all())
+        total = total_result.scalar()
         
         result = await db.execute(query.offset(page * size).limit(size))
         return result.scalars().all(), total

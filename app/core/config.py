@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     LOCAL_STORAGE_URL: str = "/static/uploads"
     
     # ── AWS Configuration ─────────────────────────────────────────────────────
-    AWS_REGION: str = "us-east-1"
+    AWS_REGION: str = ""
     AWS_SSM_PARAMETER_NAME: str = "/weq/storage/config"
     
     # ── GCP Configuration ─────────────────────────────────────────────────────

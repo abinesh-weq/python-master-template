@@ -6,6 +6,7 @@ from typing import BinaryIO, Optional, Tuple
 from datetime import datetime, timedelta
 
 from app.core.config import settings
+from app.core.secrets import get_secrets
 
 
 class BaseStorageProvider(ABC):
@@ -110,19 +111,30 @@ class LocalStorageProvider(BaseStorageProvider):
 class S3StorageProvider(BaseStorageProvider):
     """
     Amazon S3 storage provider using boto3 with AWS credential provider chain.
-    Uses STS for temporary credentials and SSM Parameter Store for configuration.
+    Uses centralized secrets management via SSM Parameter Store for configuration.
     
     Authentication Flow:
     1. Local Development: AWS SSO login -> STS provides temporary credentials
     2. Staging/Production: IAM role -> AWS injects temporary credentials
     3. boto3 automatically detects credentials via provider chain
-    4. Configuration loaded from SSM Parameter Store
+    4. Configuration loaded from centralized secrets manager
     """
 
-    def __init__(self, ssm_parameter_name: str = None, aws_region: str = None):
-        self.ssm_parameter_name = ssm_parameter_name or getattr(settings, 'AWS_SSM_PARAMETER_NAME', '/weq/storage/config')
-        self.aws_region = aws_region or getattr(settings, 'AWS_REGION', 'us-east-1')
-        self.config = {}
+    def __init__(self, aws_region: str = None):
+        self.secrets_manager = get_secrets()
+        self.aws_region = aws_region or self.secrets_manager.get('awsRegion', '')
+        
+        # Get configuration from centralized secrets manager
+        self.bucket_name = self.secrets_manager.get('bucketName')
+        if not self.bucket_name:
+            raise ValueError("bucketName not found in secrets configuration")
+        
+        # Additional configuration options
+        self.config = {
+            'encryption': self.secrets_manager.get('encryption'),
+            'publicAccess': self.secrets_manager.get('publicAccess', False),
+            'environment': self.secrets_manager.get('environment', 'development')
+        }
         
         # Lazy import boto3 to avoid dependency issues
         try:
@@ -132,43 +144,17 @@ class S3StorageProvider(BaseStorageProvider):
             self.boto3 = boto3
             self.ClientError = ClientError
             
-            # Load configuration from SSM Parameter Store
-            self._load_config_from_ssm()
-            
-            # Initialize S3 client with credential provider chain
+            # Initialize S3 client with credential provider chain and SSL verification disabled
             # boto3 automatically handles: env vars, AWS CLI login, SSO session, IAM role
             self.s3_client = boto3.client(
                 's3',
-                region_name=self.aws_region
+                region_name=self.aws_region,
+                verify=False  # Disable SSL verification for corporate networks
                 # No explicit credentials - let boto3 use provider chain
             )
             
         except ImportError:
             raise ImportError("boto3 is required for S3StorageProvider. Install with: pip install boto3")
-    
-    def _load_config_from_ssm(self):
-        """Load storage configuration from AWS Systems Manager Parameter Store"""
-        try:
-            ssm_client = self.boto3.client('ssm', region_name=self.aws_region)
-            
-            response = ssm_client.get_parameter(
-                Name=self.ssm_parameter_name,
-                WithDecryption=True
-            )
-            
-            import json
-            self.config = json.loads(response['Parameter']['Value'])
-            
-            # Validate required configuration
-            if not self.config.get('bucketName'):
-                raise ValueError("bucketName not found in SSM parameter")
-                
-            self.bucket_name = self.config['bucketName']
-            
-        except self.boto3.exceptions.ClientError as e:
-            raise Exception(f"Failed to load configuration from SSM: {e}")
-        except json.JSONDecodeError as e:
-            raise Exception(f"Invalid JSON in SSM parameter: {e}")
 
     def _generate_file_key(self, filename: str) -> str:
         """Generate unique S3 object key"""

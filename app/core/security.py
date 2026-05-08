@@ -25,11 +25,11 @@ def create_access_token(subject: str, extra_claims: Optional[dict] = None) -> st
     """
     Mirrors Java JwtUtils.generateToken().
     'sub' claim stores user email (as per specification).
-    Expires in 15 minutes exactly as per specification.
+    Expires based on ACCESS_TOKEN_EXPIRE_MINUTES from environment.
     Includes issued_at and jti claims for proper token tracking.
     """
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=15)  # Fixed 15 minutes per specification
+    expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)  # From environment
     jti = f"access_{now.timestamp()}"
     
     payload = {
@@ -47,12 +47,12 @@ def create_access_token(subject: str, extra_claims: Optional[dict] = None) -> st
 
 def create_refresh_token(subject: str) -> str:
     """
-    Long-lived refresh token (7 days exactly as per specification).
+    Long-lived refresh token based on REFRESH_TOKEN_EXPIRE_DAYS from environment.
     Claims 'type': 'refresh' to prevent misuse as access token.
     Includes jti for token rotation tracking.
     """
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(days=7)  # Fixed 7 days per specification
+    expire = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)  # From environment
     jti = f"refresh_{now.timestamp()}"
     
     payload = {
