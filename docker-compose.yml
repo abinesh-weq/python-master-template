@@ -1,0 +1,112 @@
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: weq-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: weq_db
+      MYSQL_USER: weq_user
+      MYSQL_PASSWORD: weq_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - weq-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: weq-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - weq-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 3s
+      retries: 5
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weq-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=weq_user
+      - DB_PASSWORD=weq_password
+      - DB_NAME=weq_db
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-in-production-32-chars-min
+      - DEBUG=true
+      - ENVIRONMENT=DEV
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./app:/app/app  # For development hot-reload
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - weq-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      timeout: 30s
+      retries: 3
+
+  # Debug Service (for VS Code debugging)
+  api-debug:
+    build:
+      context: .
+      dockerfile: Dockerfile.debug
+    container_name: weq-api-debug
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # Debug port
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=weq_user
+      - DB_PASSWORD=weq_password
+      - DB_NAME=weq_db
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-in-production-32-chars-min
+      - DEBUG=true
+      - ENVIRONMENT=DEV
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - weq-network
+    profiles:
+      - debug
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  weq-network:
+    driver: bridge
