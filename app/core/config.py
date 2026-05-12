@@ -65,6 +65,7 @@ class Settings(BaseSettings):
 
     # ── OTP ───────────────────────────────────────────────────────────────────
     OTP_EXPIRE_MINUTES: int = 5
+    OTP_STORAGE_TYPE: str = "DATABASE"  # DATABASE | REDIS
 
     # ── Default Roles ─────────────────────────────────────────────────────────
     DEFAULT_USER_ROLE: str = "user"

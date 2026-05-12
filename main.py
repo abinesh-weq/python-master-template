@@ -70,9 +70,20 @@ async def on_startup():
     Mirrors Java @PostConstruct / ApplicationReadyEvent.
     Initializes the InMemoryBackend for fastapi-cache2.
     Equivalent to Spring Boot's Caffeine CacheManager bean.
+    Also initializes Redis connection if OTP_STORAGE_TYPE is REDIS.
     """
+    # Initialize in-memory cache
     FastAPICache.init(InMemoryBackend(), prefix="weq-cache")
     logging.getLogger(__name__).info("✅ In-memory cache initialized.")
+    
+    # Initialize Redis connection if using Redis for OTP
+    if settings.OTP_STORAGE_TYPE.upper() == "REDIS":
+        from app.core.redis_client import redis_client
+        redis_connected = await redis_client.connect()
+        if redis_connected:
+            logging.getLogger(__name__).info("✅ Redis connection established for OTP service.")
+        else:
+            logging.getLogger(__name__).warning("⚠️ Redis connection failed, OTP will fall back to database.")
 
 
 # ── Shutdown — Graceful Cleanup ───────────────────────────────────────────────
@@ -87,6 +98,12 @@ async def shutdown_event():
     # Close database connections
     await engine.dispose()
     logging.getLogger(__name__).info("✅ Database connections closed.")
+    
+    # Close Redis connection if it was initialized
+    if settings.OTP_STORAGE_TYPE.upper() == "REDIS":
+        from app.core.redis_client import redis_client
+        await redis_client.disconnect()
+        logging.getLogger(__name__).info("✅ Redis connection closed.")
     
     # Clear cache
     try:
