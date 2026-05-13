@@ -94,12 +94,9 @@ class IntegrationService:
 
         try:
             await asyncio.to_thread(_sync_send)
-            print(f"INFO: SMTP send succeeded for recipient={recipient} via {smtp_host}:{smtp_port}")
             return True
         except Exception as exc:
             self._last_smtp_error = str(exc)
-            print(f"ERROR: SMTP send failed for recipient={recipient} via {smtp_host}:{smtp_port}")
-            print(f"ERROR: SMTP exception: {exc}")
             return False
 
     async def dispatch(
@@ -133,7 +130,6 @@ class IntegrationService:
 
         # ── Step 2: Find best provider ────────────────────────────────────────
         provider = await self._get_active_provider(db, channel)
-        print(f"Selected provider for {channel}: {provider.provider_name if provider else None}")
         if not provider:
             await self._write_log(
                 db, recipient=recipient, channel=channel,
@@ -217,10 +213,6 @@ class IntegrationService:
         response_text: str = ""
         dispatch_status = "FAILURE"
         error_message: Optional[str] = None
-
-        print(f"DEBUG: Provider URL -> {url}")
-        print(f"DEBUG: Provider Headers -> {headers}")
-        print(f"DEBUG: Provider Body -> {rendered_body_str}")
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:

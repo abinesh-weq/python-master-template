@@ -40,7 +40,6 @@ class EmailService:
             
             return True
         except Exception as e:
-            print(f"Email send failed: {e}")
             return False
 
 
@@ -65,10 +64,8 @@ class SMSService:
             # )
             # return True
             
-            print(f"SMS sent to {to_number}: {message}")
             return True
         except Exception as e:
-            print(f"SMS send failed: {e}")
             return False
 
 

@@ -33,9 +33,7 @@ class SecretsManager:
     def _should_load_from_ssm(self) -> bool:
         """Check if we should load secrets from SSM based on parameter name"""
         param_name = os.getenv("SSM_PARAM_NAME", "")
-        print(f"🔍 DEBUG: SSM_PARAM_NAME = '{param_name}'")
         should_load = bool(param_name)
-        print(f"🔍 DEBUG: Should load from SSM = {should_load}")
         return should_load  # Load from SSM if parameter name is provided
     
     def _load_secrets(self):
@@ -50,7 +48,6 @@ class SecretsManager:
             return
         
         try:
-            print(f"🔍 DEBUG: Loading from SSM...")
             
             # Get SSM parameter name from environment or use default
             param_name = os.getenv(
@@ -63,9 +60,6 @@ class SecretsManager:
                 "AWS_REGION",
                 getattr(settings, 'AWS_REGION', 'ap-south-1')
             )
-            
-            print(f"🔍 DEBUG: Using parameter name = '{param_name}'")
-            print(f"🔍 DEBUG: Using AWS region = '{aws_region}'")
             
             # Create SSM client with SSL verification disabled
             ssm_client = boto3.client(
@@ -80,20 +74,13 @@ class SecretsManager:
                 WithDecryption=True
             )
             
-            print(f"🔍 DEBUG: SSM response received successfully")
-            
             # Parse JSON
             self._secrets = json.loads(response['Parameter']['Value'])
-            
-            print(f"🔍 DEBUG: Loaded secrets: {list(self._secrets.keys())}")
-            print(f"🔍 DEBUG: Bucket = '{self._secrets.get('bucketName')}'")
-            print(f"🔍 DEBUG: Region = '{self._secrets.get('awsRegion')}'")
             
             # Inject all secrets into environment variables for downstream use
             self._inject_into_environment()
             
             self._loaded = True
-            print(f"🔍 DEBUG: Secrets loaded successfully!")
             
         except ClientError as e:
             raise RuntimeError(f"AWS SSM Access Failure: {e}")
@@ -104,7 +91,6 @@ class SecretsManager:
     
     def _load_from_environment(self):
         """Load secrets from environment variables for development"""
-        print(f"🔍 DEBUG: Loading from environment variables...")
         
         # Map common environment variable names to the expected keys
         env_mappings = {
@@ -132,11 +118,6 @@ class SecretsManager:
             value = os.getenv(env_key)
             if value:
                 self._secrets[secret_key] = value
-                print(f"🔍 DEBUG: Found {secret_key} from {env_key}")
-        
-        print(f"🔍 DEBUG: Environment secrets loaded: {list(self._secrets.keys())}")
-        print(f"🔍 DEBUG: Bucket from env = '{self._secrets.get('bucketName')}'")
-        print(f"🔍 DEBUG: Region from env = '{self._secrets.get('awsRegion')}'")
     
     def _inject_into_environment(self):
         """Inject secrets into environment variables for downstream consumption"""
@@ -211,15 +192,7 @@ def get_oauth_config() -> Dict[str, str]:
 
 if __name__ == "__main__":
     """Test the secrets manager when run directly"""
-    print("🚀 Testing Secrets Manager...")
-    print("=" * 50)
-    
     try:
         secrets = get_secrets()
-        print(f"✓ Bucket: {secrets.get('bucketName')}")
-        print(f"✓ Region: {secrets.get('awsRegion')}")
-        print(f"✓ All secrets: {list(secrets.get_all().keys())}")
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        pass

@@ -217,7 +217,6 @@ class AuthService:
 
             # Trigger OTP dispatch via integration engine
             otp = await otp_service.send_otp(db, recipient, "MFA", settings.OTP_EXPIRE_MINUTES)
-            print("MFA OTP: ", otp)
             await integration_service.dispatch(
                 db=db,
                 template_code=template_code,
@@ -381,12 +380,8 @@ class AuthService:
         Generates and dispatches OTP via integration engine.
         otp_type: EMAIL_OTP | MOBILE_OTP | MFA
         """
-        print(f"DEBUG: Request to send OTP of type '{otp_type}' to identifier '{identifier}'")
         otp = await otp_service.send_otp(db, identifier, otp_type, settings.OTP_EXPIRE_MINUTES)
 
-        # Verification print
-        print(f"DEBUG: OTP stored for {identifier} [{otp_type}] (hashed in DB)")
-        print(f"DEBUG: OTP: {otp}")
         # Determine channel and template
         if otp_type == "MOBILE_OTP":
             template_code = "OTP_SMS"
@@ -400,10 +395,7 @@ class AuthService:
             variables={"OTP": otp, "USERNAME": ""},
         )
 
-        if dispatch_success:
-            print(f"DEBUG: OTP dispatch succeeded for {identifier} using {template_code}")
-        else:
-            print(f"ERROR: OTP dispatch failed for {identifier} using {template_code}")
+        if not dispatch_success:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Failed to send OTP; please try again later.",
@@ -420,7 +412,6 @@ class AuthService:
             # Silent fail — don't reveal account existence
             return
         otp = await otp_service.send_otp(db, email, "PASSWORD_RESET", settings.OTP_EXPIRE_MINUTES)
-        print("OTP", otp)
         await integration_service.dispatch(
             db=db,
             template_code="PASSWORD_RESET_EMAIL",

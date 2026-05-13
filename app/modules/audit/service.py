@@ -23,7 +23,6 @@ class AuditService:
         force_save_response: bool = False,
     ) -> Optional[AuditLog]:
         # Debugging
-        print(f"DEBUG: AuditService.log called for action={action}, module={module}")
         """
         Persists a record of a sensitive action.
         - status_code: The HTTP status code of the response.
