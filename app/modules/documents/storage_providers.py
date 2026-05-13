@@ -359,11 +359,11 @@ def get_storage_provider(provider_type: str) -> BaseStorageProvider:
     - Production: IAM role -> AWS injected credentials
     - Configuration from SSM Parameter Store
     """
-    if provider_type == "LOCAL":
+    if provider_type.upper() == "LOCAL":
         return LocalStorageProvider()
-    elif provider_type == "S3":
+    elif provider_type.upper() == "S3":
         return S3StorageProvider()
-    elif provider_type == "GCS":
+    elif provider_type.upper() == "GCS":
         return GCSStorageProvider()
     else:
         raise ValueError(f"Unsupported storage provider: {provider_type}")

@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     # ── Storage Configuration ─────────────────────────────────────────────────
     LOCAL_STORAGE_PATH: str = "data/uploads"
     LOCAL_STORAGE_URL: str = "/static/uploads"
+    DEFAULT_STORAGE_PROVIDER: str = "S3"
     
     # ── AWS Configuration ─────────────────────────────────────────────────────
     AWS_REGION: str = ""

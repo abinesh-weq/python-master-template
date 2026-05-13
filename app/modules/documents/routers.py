@@ -28,11 +28,15 @@ async def upload_document(
     description: Optional[str] = None,
     tags: Optional[str] = None,
     access_level: str = "PROTECTED",
-    provider_type: str = "LOCAL",
+    provider_type: Optional[str] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
     current_user: Annotated[object, Depends(get_current_user)] = None
 ):
     """Upload a document with metadata"""
+    
+    # Use provider from request or fall back to config
+    from app.core.config import settings
+    provider_type = provider_type or settings.DEFAULT_STORAGE_PROVIDER
     
     # Convert string enums to proper enum types
     from app.modules.documents.models import AccessLevel, StorageProvider
